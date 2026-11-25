@@ -1,0 +1,75 @@
+name: Build and publish test release
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package/VERSION'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: rotm-test-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package/VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          "ROTM_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Test combat transport
+        run: dotnet run --project tests/CombatTransport/CombatTransport.csproj -c Release
+      - name: Build Steam bridge
+        shell: pwsh
+        run: |
+          dotnet publish steam-bridge/RotMSteamBridge.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true "-p:Version=$env:ROTM_VERSION" -o out/bridge
+          if ($LASTEXITCODE) { throw 'Bridge build failed' }
+      - name: Package and verify
+        run: python package/build-release.py
+      - name: Archive build
+        uses: actions/upload-artifact@v4
+        with:
+          name: RotMCoop-Win64-${{ env.ROTM_VERSION }}-test
+          path: |
+            out/RotMCoop-Win64-*-test.zip
+            out/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $v = $env:ROTM_VERSION
+          $tag = "v$v"
+          $zip = "out/RotMCoop-Win64-$v-test.zip"
+          $notes = "package/RELEASE-$v.md"
+          if (!(Test-Path $notes)) { throw "Missing release notes: $notes" }
+          $existing = gh release view $tag --json isDraft,targetCommitish 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $release = $existing | ConvertFrom-Json
+            if (!$release.isDraft) {
+              $refs = git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}"
+              if (!($refs -match "^$env:GITHUB_SHA\s")) { throw "Version $tag already published from another commit; bump package/VERSION" }
+              Write-Host "$tag already published from this commit"
+              exit 0
+            }
+            if ($release.targetCommitish -ne $env:GITHUB_SHA) { throw "Existing draft targets another commit" }
+            gh release upload $tag $zip out/SHA256SUMS.txt --clobber
+            if ($LASTEXITCODE) { throw 'Release upload failed' }
+          } else {
+            gh release create $tag $zip out/SHA256SUMS.txt --target "$env:GITHUB_SHA" --title "RotMCoop $v" --notes-file $notes --prerelease --draft
+            if ($LASTEXITCODE) { throw 'Release creation failed' }
+          }
+          gh release edit $tag --draft=false
+          if ($LASTEXITCODE) { throw 'Release publish failed' }

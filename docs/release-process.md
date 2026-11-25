@@ -1,0 +1,3 @@
+# Release process
+
+For every new test version, update package/VERSION (X.Y.Z), add package/RELEASE-X.Y.Z.md and update the installer and README version references. Commit the source and version bump together and push to main. The reusable release.yml workflow runs transport tests, builds the bridge, verifies the ZIP, uploads the Actions artifact and publishes a prerelease with SHA256SUMS.txt. Never upload release ZIPs manually or create a separate version-specific workflow. A published version is immutable; bump the version for a new build. Failed runs can be retried from Actions. The old version-specific workflows are retained for history.
