@@ -165,6 +165,14 @@ internal static class NativeGuards
         }
         throw new InvalidOperationException("Party guard original bytes mismatch at " + site.ToString("X"));
     }
+    // The same deactivation runs during host-side remote pawn teardown.
+    private static void EnsureDetectionGuard(nint h, long image)
+    {
+        EnsurePartyPatch(h, image + 0x51D6859, DetectionDeactivateOriginal, site =>
+            Combine(Hex("488B8BC000000033D24885C97409"),
+                Hex("488B01FF9090040000"),
+                IndirectJump(site + DetectionDeactivateOriginal.Length)));
+    }
     internal static PartyHandle InstallParty(int pid, string exe)
     {
         VerifyGame(exe);
@@ -176,6 +184,7 @@ internal static class NativeGuards
         if (h == 0) throw new Win32Exception(Marshal.GetLastWin32Error(), "party OpenProcess");
         try
         {
+            EnsureDetectionGuard(h, image);
             byte[] ui = Hex("48895C24104889742420574883EC40");
             EnsurePartyPatch(h, image + 0x5136D00, ui, site =>
                 Combine(Hex("F681C4060000017501C3"), ui, IndirectJump(site + ui.Length)));
@@ -220,7 +229,7 @@ internal static class NativeGuards
             CheckBytes(handle, baseAddress, 0x5133C90, AttributeSyncOriginal);
             CheckBytes(handle, baseAddress, 0x50EA407, MageBeginOriginal);
             CheckBytes(handle, baseAddress, 0x510CC99, MageControllerOriginal);
-            CheckBytes(handle, baseAddress, 0x51D6859, DetectionDeactivateOriginal);
+            if (dryRun) CheckBytes(handle, baseAddress, 0x51D6859, DetectionDeactivateOriginal);
             if (dryRun) return "GUARDS_VERIFIED";
 
             // Null difficulty component: avoid a crash; actual component gets the original getter.
@@ -256,10 +265,7 @@ internal static class NativeGuards
 
             // Keep the native deactivation and cleanup, skipping only the virtual
             // call when the replicated dependency at +0xc0 is absent.
-            Patch(handle, baseAddress + 0x51D6859, DetectionDeactivateOriginal, site =>
-                Combine(Hex("488B8BC000000033D24885C97409"),
-                    Hex("488B01FF9090040000"),
-                    IndirectJump(site + DetectionDeactivateOriginal.Length)), true);
+            EnsureDetectionGuard(handle, baseAddress);
 
             return "GUARDS_INSTALLED";
         }

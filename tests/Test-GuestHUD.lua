@@ -32,3 +32,17 @@ assert(#errors==0,table.concat(errors,";"))
 assert(foreground.Brush.ResourceObject==texture and foreground.vis==0,"guest icon not restored")
 assert(key.Brush.ResourceObject==texture and key.vis==0,"key icon not restored")
 print("Guest HUD game-instance regression passed")
+
+-- Two native host HUDs can both be attached to the same controller.
+-- Preserve the actual controller.HUD, not whichever FindAllOf yields first.
+local duplicate=obj("BPW_GameHUD_C "..prefix.."BPW_GameHUD_C_5",{
+    IsInViewport=function(self)return not self.removed end,
+    GetOwningPlayer=function()return controller end,
+    RemoveFromParent=function(self)self.removed=true end,
+})
+controller.HUD=hud
+function FindAllOf(c)if c=="BPW_GameHUD_C"then return {duplicate,stale,hud}else return {panel}end end
+assert(m.local_hud(st,world,controller)==hud,"Canonical controller HUD lost")
+assert(m.prune_duplicate_huds(st,world,controller,function()end)==1,"Duplicate HUD not removed")
+assert(duplicate.removed and hud:IsInViewport(),"Canonical HUD must remain attached")
+print("Canonical native HUD deduplication passed")

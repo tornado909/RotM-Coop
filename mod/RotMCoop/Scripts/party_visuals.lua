@@ -360,6 +360,9 @@ function M.install(config,deps)
         end
         local pc=st:GetPlayerController(w,0)
         if not valid(pc) or not valid(pc.Pawn)then allyHud.clear();return end
+        if sys:IsServer(w) and s.role=="host" and tonumber(s.member_count or 0)>1 then
+            safe("duplicate HUD",function()StockHUD.prune_duplicate_huds(st,w,pc,deps.log)end)
+        end
         local stockHud=StockHUD.local_hud(st,w,pc)
         if not sys:IsServer(w) then safe("local HUD",function()syncVitals(pc,stockHud)end) end
         local now=st:GetRealTimeSeconds(w)

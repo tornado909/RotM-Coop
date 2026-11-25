@@ -114,10 +114,11 @@ function M.new(config,deps,ui)
         if valid(panel) then panel:RemoveFromParent() end
         panel=nil
         if locked and valid(localController) then
-            pcall(function()localController:SetIgnoreMoveInput(false);localController.bShowMouseCursor=false end)
+            pcall(function()localController:SetIgnoreMoveInput(false);localController:SetIgnoreLookInput(false);localController.bShowMouseCursor=false end)
             local lib=StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary")
             if valid(lib) then
                 pcall(function()lib:SetInputMode_GameOnly(localController,true)end)
+                pcall(function()lib:SetFocusToGameViewport()end)
             end
             pcall(function()localController:FlushPressedKeys()end)
             local p=localController.Pawn
@@ -131,7 +132,9 @@ function M.new(config,deps,ui)
         if not localDraft or sentIndex or not localDraft.ids[index] then return end
         sentIndex=index;lastSent=0
         deps.log("Party card choice "..localDraft.ids[index])
-        clearPanel()
+        -- The native CardSelected call is still on the stack. Remove the
+        -- panel and restore mouse capture on the following dispatcher tick.
+
     end
     pcall(RegisterHook,"/Script/RevengeOfTheMage.W_AbilityCard:CardSelected",function(ctx)
         local o=ctx:get()
@@ -180,6 +183,7 @@ function M.new(config,deps,ui)
         end)
         c.bShowMouseCursor=true
         c:SetIgnoreMoveInput(true)
+        c:SetIgnoreLookInput(true)
         locked=true
         pcall(function()c.Pawn.AbilitySystemComponent:SetUserAbilityActivationInhibited(true)end)
         pcall(function()lib:SetInputMode_GameAndUIEx(c,panel,0,false,false)end)
@@ -340,6 +344,7 @@ function M.new(config,deps,ui)
             end
         end
         if sentIndex then
+            if panel or locked then clearPanel() end
             local now=st:GetRealTimeSeconds(w)
             if now-lastSent>=1 or lastSent==0 then
                 if deps.send("party_choice|"..epoch.."|"..draft.round.."|"..id.."|"..sentIndex) then lastSent=now end

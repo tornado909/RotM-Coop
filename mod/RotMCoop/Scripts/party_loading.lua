@@ -79,6 +79,7 @@ function M.install(config,deps)
                 local ok,e=pcall(function()
                     c.bShowMouseCursor=false
                     lib:SetInputMode_GameOnly(c,true)
+                    lib:SetFocusToGameViewport()
                 end)
                 deps.log(ok and "Party travel input restored" or "Party travel input restore failed: "..tostring(e))
             end

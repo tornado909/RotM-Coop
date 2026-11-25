@@ -83,28 +83,57 @@ local function paint(image, texture)
 end
 Module.paint = paint
 
--- Use the viewport instance under the current GameInstance. Its class
--- default and a HUD from another player can share the same widget names.
-function Module.local_hud(statics, world, controller)
-    local gi = statics:GetGameInstance(world)
-    local gi_name = fullname(gi):match("^%S+ (.+)$")
-    if not gi_name then return end
-    local hud, fallback, count = nil, nil, 0
-    for _, widget in ipairs(FindAllOf("BPW_GameHUD_C") or {}) do
-        if valid(widget) and fullname(widget):find(gi_name .. ".", 1, true) then
-            local owner_ok, owner = pcall(function() return widget:GetOwningPlayer() end)
-            if not owner_ok or not valid(owner) or fullname(owner) == fullname(controller) then
-                count = count + 1
-                fallback = widget
-                local ok, in_viewport = pcall(function() return widget:IsInViewport() end)
-                if ok and in_viewport == true then
-                    if hud then return end
-                    hud = widget
+-- The native RM_PlayerController.HUD property points to the actual local
+-- gameplay widget. A remote possession can create a second BPW_GameHUD_C
+-- under the same GI and even assign it the local controller as UMG owner.
+-- Never choose by object order or remove the controller's own HUD.
+local function hudCandidates(statics,world,controller)
+    local gi=statics:GetGameInstance(world)
+    local gi_name=fullname(gi):match("^%S+ (.+)$")
+    if not gi_name then return nil,{},{} end
+    local all,viewport={},{}
+    local canonical
+    local ok,preferred=pcall(function()return controller.HUD end)
+    local preferredName=ok and fullname(preferred)or ""
+    for _,widget in ipairs(FindAllOf("BPW_GameHUD_C")or{})do
+        if valid(widget)and fullname(widget):find(gi_name..".",1,true)then
+            local owner_ok,owner=pcall(function()return widget:GetOwningPlayer()end)
+            if not owner_ok or not valid(owner)or fullname(owner)==fullname(controller)then
+                all[#all+1]=widget
+                local visible,inView=pcall(function()return widget:IsInViewport()end)
+                if visible and inView==true then
+                    viewport[#viewport+1]=widget
+                    if owner_ok and valid(owner)and fullname(owner)==fullname(controller)
+                        and fullname(widget)==preferredName then canonical=widget end
                 end
             end
         end
     end
-    return hud or (count == 1 and fallback or nil)
+    return canonical,viewport,all
+end
+function Module.local_hud(statics,world,controller)
+    local canonical,viewport,all=hudCandidates(statics,world,controller)
+    if canonical then return canonical end
+    if #viewport==1 then return viewport[1]end
+    if #viewport==0 and #all==1 then return all[1]end
+end
+function Module.prune_duplicate_huds(statics,world,controller,log)
+    local canonical,viewport=hudCandidates(statics,world,controller)
+    if not valid(canonical)then return 0 end
+    local count=0
+    for _,widget in ipairs(viewport)do
+        if fullname(widget)~=fullname(canonical)then
+            local ok,owner=pcall(function()return widget:GetOwningPlayer()end)
+            if ok and valid(owner)and fullname(owner)==fullname(controller)then
+                widget:RemoveFromParent()
+                if not widget:IsInViewport()then
+                    count=count+1
+                    log("Removed duplicate native HUD "..fullname(widget))
+                end
+            end
+        end
+    end
+    return count
 end
 
 function Module.spell_panel(hud)

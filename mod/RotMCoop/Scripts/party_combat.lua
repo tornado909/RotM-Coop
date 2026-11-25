@@ -265,11 +265,13 @@ function M.install(config, deps)
     local savedPolicies = {}
     local montages=Montages.new(deps.log)
     local reloadQueue, reloadEdges = {}, {}
+    local localPrimary = {}
     local function reset(key)
         sessionKey, lastPayload, lastSent = key, nil, -1
         samples, aimByPlayer, inputs, sentInput = {}, {}, {}, {}
         lastSnapshot = nil
         reloadQueue, reloadEdges = {}, {}
+        localPrimary = {}
     end
 
     local mouseStateLogged=false
@@ -491,9 +493,36 @@ function M.install(config, deps)
                 if not paused then processReload(actor, profile.sid, now) end
             end
         end
-        for _, actor in pairs(active) do
-            if not paused and actor.controller.bIsLocalPlayerController then processReload(actor,nil,now) end
+        for id, actor in pairs(active) do
+            if actor.controller.bIsLocalPlayerController then
+                -- The host has the same stuck ServerOnly primary instance,
+                -- but never sends a guest input packet. Reconcile its own
+                -- release independently of the remote player's state.
+                local native=pressed(actor.asc)[1]
+                local mouse
+                if config.party_primary_mouse_guard~=false then mouse=primaryMouse(actor.controller) end
+                local blocked=paused or actor.controller.bShowMouseCursor==true or actor.pawn.bIsDead
+                local down=M.primaryState(native,mouse,blocked)
+                local e=localPrimary[id]
+                if not e or e.pawn~=name(actor.pawn) then e={pawn=name(actor.pawn)};localPrimary[id]=e end
+                if down then e.releasedAt=nil;e.releaseApplied=false
+                else
+                    e.releasedAt=e.releasedAt or now
+                    if native or not e.releaseApplied then
+                        actor.asc:ReleaseInputID(1);e.releaseApplied=true
+                    end
+                    if not actor.pawn.bIsDead and now-e.releasedAt>=0.35 then
+                        local count=cancelReleasedPrimary(actor)
+                        if count>0 then
+                            deps.log("Party primary local release recovery player="..actor.id.." instances="..count)
+                            e.releasedAt=now
+                        end
+                    end
+                end
+                if not paused then processReload(actor,nil,now) end
+            end
         end
+        for id in pairs(localPrimary)do if not active[id]then localPrimary[id]=nil end end
     end
 
     local function prepare(ctx)

@@ -12,7 +12,7 @@
 #pragma comment(lib,"ws2_32.lib")
 #define API extern "C" __declspec(dllexport)
 static constexpr uint64_t BASE=70000000000000000ULL, ROOM=109775240917246251ULL;
-struct Shared{LONG owner,guest,ready,epoch;ULONGLONG joinTick;char name[128],tag[128],transport[128],stage[32],bans[128],hostPhase[32],guestPhase[32];};
+struct Shared{LONG owner,guest,ready,epoch;ULONGLONG joinTick;char name[128],tag[128],transport[128],stage[32],bans[128],hostPhase[32],guestPhase[32];char cards[2049],downed[2049],visuals[2049],hostProfile[512],guestProfile[512],hostChoice[128],guestChoice[128];};
 static Shared* sh=nullptr;static HANDLE mapping=nullptr;static SOCKET udp=INVALID_SOCKET;
 static int slot=0;static uint64_t steamId=0,call=11;
 struct Packet{uint64_t peer;int ch;std::vector<uint8_t> data;};
@@ -115,7 +115,7 @@ API void SteamAPI_ISteamFriends_ActivateGameOverlayInviteDialog(void*,uint64_t){
 API bool SteamAPI_ISteamMatchmaking_InviteUserToLobby(void*,uint64_t,uint64_t){return true;}
 API uint64_t SteamAPI_ISteamMatchmaking_CreateLobby(void*,int,int){
  if(!sh)return 0;sh->owner=slot;sh->guest=sh->ready=sh->epoch=0;
- sh->stage[0]=0;sh->bans[0]=0;sh->hostPhase[0]=sh->guestPhase[0]=0;
+ sh->stage[0]=0;sh->bans[0]=0;sh->hostPhase[0]=sh->guestPhase[0]=0;sh->cards[0]=sh->downed[0]=sh->visuals[0]=sh->hostProfile[0]=sh->guestProfile[0]=sh->hostChoice[0]=sh->guestChoice[0]=0;
  struct Created{int32_t result,pad;uint64_t room;} x{1,0,ROOM};
  return complete(513,&x,sizeof(x));
 }
@@ -143,7 +143,10 @@ API bool SteamAPI_ISteamMatchmaking_SetLobbyData(void*,uint64_t,const char* key,
  if(!strcmp(key,"rotm"))d=sh->tag;
  if(!strcmp(key,"name"))d=sh->name;
  if(!strcmp(key,"transport"))d=sh->transport;
- if(!strcmp(key,"stage"))d=sh->stage;
+ if(!strcmp(key,"stage")){strncpy_s(sh->stage,sizeof(sh->stage),value,_TRUNCATE);return true;}
+ if(!strcmp(key,"rotm_cards_v2")){strncpy_s(sh->cards,sizeof(sh->cards),value,_TRUNCATE);return true;}
+ if(!strcmp(key,"rotm_downed_v2")){strncpy_s(sh->downed,sizeof(sh->downed),value,_TRUNCATE);return true;}
+ if(!strcmp(key,"rotm_visuals_v1")){strncpy_s(sh->visuals,sizeof(sh->visuals),value,_TRUNCATE);return true;}
  if(!strcmp(key,"bans"))d=sh->bans;
  if(!strcmp(key,"ready")){sh->ready=atoi(value);return true;}
  if(!strcmp(key,"epoch")){sh->epoch=atoi(value);return true;}
@@ -156,6 +159,9 @@ API const char* SteamAPI_ISteamMatchmaking_GetLobbyData(void*,uint64_t,const cha
  if(!strcmp(key,"name"))return sh->name;
  if(!strcmp(key,"transport"))return sh->transport;
  if(!strcmp(key,"stage"))return sh->stage;
+ if(!strcmp(key,"rotm_cards_v2"))return sh->cards;
+ if(!strcmp(key,"rotm_downed_v2"))return sh->downed;
+ if(!strcmp(key,"rotm_visuals_v1"))return sh->visuals;
  if(!strcmp(key,"bans"))return sh->bans;
  if(!strcmp(key,"ready"))return sh->ready?"1":"0";
  if(!strcmp(key,"epoch")){static char out[18];sprintf_s(out,"%d",(int)sh->epoch);return out;}
@@ -178,15 +184,20 @@ API uint64_t SteamAPI_ISteamMatchmaking_GetLobbyOwner(void*,uint64_t){
 API bool SteamAPI_ISteamMatchmaking_RequestLobbyData(void*,uint64_t){return true;}
 API void SteamAPI_ISteamMatchmaking_SetLobbyMemberData(
    void*,uint64_t,const char* key,const char* value){
- if(sh && !strcmp(key,"phase")){
-   char* d=slot==sh->owner?sh->hostPhase:sh->guestPhase;
-   strncpy_s(d,32,value,31);
- }
+ if(!sh)return;
+ bool host=slot==sh->owner;
+ if(!strcmp(key,"phase"))strncpy_s(host?sh->hostPhase:sh->guestPhase,32,value,_TRUNCATE);
+ if(!strcmp(key,"rotm_profile_v1"))strncpy_s(host?sh->hostProfile:sh->guestProfile,512,value,_TRUNCATE);
+ if(!strcmp(key,"rotm_choice_v2"))strncpy_s(host?sh->hostChoice:sh->guestChoice,128,value,_TRUNCATE);
 }
 API const char* SteamAPI_ISteamMatchmaking_GetLobbyMemberData(
-  void*,uint64_t,uint64_t id,const char* key){
- if(!sh||strcmp(key,"phase"))return "";
- return id==BASE+sh->owner?sh->hostPhase:id==BASE+sh->guest?sh->guestPhase:"";
+ void*,uint64_t,uint64_t id,const char* key){
+ if(!sh||(id!=BASE+sh->owner&&id!=BASE+sh->guest))return "";
+ bool host=id==BASE+sh->owner;
+ if(!strcmp(key,"phase"))return host?sh->hostPhase:sh->guestPhase;
+ if(!strcmp(key,"rotm_profile_v1"))return host?sh->hostProfile:sh->guestProfile;
+ if(!strcmp(key,"rotm_choice_v2"))return host?sh->hostChoice:sh->guestChoice;
+ return "";
 }
 API bool SteamAPI_ISteamMatchmaking_SendLobbyChatMsg(
   void*,uint64_t lobby,const uint8_t* data,int n){

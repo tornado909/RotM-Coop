@@ -68,7 +68,7 @@ function M.install(config,deps)
         local pid=valid(pc)and valid(pc.PlayerState)and pc.PlayerState.PlayerId
         if not pid then return end
         -- Cache the identity while the channel exists: enemy death tears it off.
-        local open={}
+        local openPaths={}
         for _,ch in ipairs(FindAllOf("ActorChannel")or{})do
             if valid(ch)and enemy(ch.Actor,w)then
                 local a,c=ch.Actor,ch.Connection
@@ -79,10 +79,9 @@ function M.install(config,deps)
                 local cls=class(a)
                 if k and path and cls and recipient and recipient>0 and (host and recipient~=pid or not host and recipient==pid) then
                     local id=recipient..":"..k
-                    local slot=recipient..":"..k:match("^(%d+):")
-                    open[slot]=id
+                    openPaths[recipient..":"..path]=id
                     local old=known[id]
-                    if not old or old.path~=path then known[id]={path=path,class=cls,pid=recipient,key=k,slot=slot,last=now,received=0} else old.last=now end
+                    if not old or old.path~=path then known[id]={path=path,class=cls,pid=recipient,key=k,last=now,received=0} else old.last=now end
                 end
             end
         end
@@ -94,28 +93,51 @@ function M.install(config,deps)
                 if rows then for k,r in pairs(rows)do if not incoming[k]or incoming[k].seq<r.seq then incoming[k]=r end end end
             end
         end
+        local function queue(v,row)
+            local rows=groups[v.pid]or{}
+            groups[v.pid]=rows
+            rows[#rows+1]=row
+        end
         for id,v in pairs(known)do
             local a=StaticFindObject(v.path)
-            if not enemy(a,w)or class(a)~=v.class or (open[v.slot]and open[v.slot]~=id)or now-v.last>8 then
+            local reused=openPaths[v.pid..":"..v.path] and openPaths[v.pid..":"..v.path]~=id
+            local stale=now-v.last>8
+            if stale then
+                known[id]=nil
+            elseif host and v.terminal then
+                -- Keep the old lifetime's terminal snapshot even if its channel
+                -- number or actor has already been reused by a new enemy.
+                queue(v,v.terminal)
+            elseif reused or not enemy(a,w)or class(a)~=v.class then
                 known[id]=nil
             else
                 local t=attributes(a)
                 if t and host then
                     local hp,m=t.HealthPower.CurrentValue,t.MaxHealth.CurrentValue
                     if type(hp)=="number"and type(m)=="number"and m>=0.001 and m<=1000000000 and hp==hp then
-                        local rows=groups[v.pid]or{}
-                        groups[v.pid]=rows
-                        rows[#rows+1]=string.format("%s:%s:%.3f:%.3f:%d",v.key,v.class,math.max(0,math.min(hp,m)),m,a.bIsDead and 1 or 0)
+                        local dead=a.bIsDead==true
+                        local row=string.format("%s:%s:%.3f:%.3f:%d",v.key,v.class,dead and 0 or math.max(0,math.min(hp,m)),m,dead and 1 or 0)
+                        if dead then v.terminal=row end
+                        queue(v,row)
                     end
                 elseif t and not host then
                     local r=incoming[v.key]
-                    if r and r.class==v.class and r.seq>v.received then
+                    if r and r.class==v.class and r.seq>v.received and not v.dead then
                         t.MaxHealth.CurrentValue=r.max;t.MaxHealth.BaseValue=r.max
                         t.HealthPower.CurrentValue=r.hp;t.HealthPower.BaseValue=r.hp
-                        if r.dead and not a.bIsDead then
-                            a.bIsDead=true
-                            a:Die_BP()
+                        if r.dead then
+                            if not a.bIsDead then
+                                a.bIsDead=true
+                                a:Die_BP()
+                            end
                             a:SetActorEnableCollision(false)
+                            v.dead=true
+                            -- A local target must not keep a corpse locked after
+                            -- the authoritative actor channel has torn off.
+                            local detector=valid(pc.Pawn) and pc.Pawn.EnemyDetectionComponent
+                            if valid(detector) and name(detector.CurrentTarget)==name(a) then
+                                detector:NullifyCurrentTarget()
+                            end
                         end
                         v.received=r.seq
                     end

@@ -89,6 +89,20 @@ def check_combat_transport(guest_id):
     time.sleep(.15)
     assert combat_rows("guest") == [start, end]
     print("COMBAT_AUTHORITY_INPUT_ORDER_AIM_AND_EFFECT_LIFECYCLE_PASS", flush=True)
+    enemy = "N|1|1|258|0|17:11575:11575:BP_Ghoul_C:1200:1200:0"
+    dead = "N|1|2|258|0|17:11575:11575:BP_Ghoul_C:0:1200:1"
+    command("guest", "party_combat|" + enemy)
+    time.sleep(.15)
+    assert enemy not in combat_rows("host"), "Guest enemy authority leaked"
+    command("host", "party_combat|" + enemy)
+    wait_combat("guest", lambda rows: enemy in rows)
+    command("host", "party_combat|" + dead)
+    wait_combat("guest", lambda rows: dead in rows and enemy not in rows)
+    command("host", "party_combat|" + enemy)
+    time.sleep(.15)
+    assert dead in combat_rows("guest") and enemy not in combat_rows("guest")
+    print("ENEMY_AUTHORITY_AND_NETWORK_SNAPSHOT_PASS", flush=True)
+
 
 def main():
     for name,num in [("host","1"),("guest","2")]:
