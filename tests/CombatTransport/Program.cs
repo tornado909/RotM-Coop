@@ -91,3 +91,18 @@ Require(!CombatEvents.TryParse(active[0].Replace("/Game/FX/", "/Game/../"), epoc
 guest.Clear();
 Require(Rows(guest).Length == 0 && guest.Dirty, "Invalidated combat state remained in the snapshot");
 Console.WriteLine("COMBAT_TRANSPORT_FOUR_MAGES_PASS");
+
+// Enemy state has no guest authority; per-recipient batches replace only older samples.
+var enemies = new CombatEvents();
+var enemyOld = Message($"N|{epoch}|1|258|0|17:11575:11575:BP_Ghoul_C:1200:1200:0", false, false);
+var enemyDead = Message($"N|{epoch}|2|258|0|17:11575:11575:BP_Ghoul_C:0:1200:1", false, false);
+var enemyOther = Message($"N|{epoch}|3|259|0|17:11575:11575:BP_Ghoul_C:900:900:0", false, false);
+enemies.Receive(1, enemyOld, now);
+enemies.Receive(1, enemyDead, now);
+enemies.Receive(1, enemyOld, now);
+enemies.Receive(1, enemyOther, now);
+Require(Rows(enemies).Length == 2 && Rows(enemies).Contains(enemyDead.Text) && Rows(enemies).Contains(enemyOther.Text), "Enemy batch order or recipient isolation");
+Require(!CombatEvents.TryParse($"N|{epoch}|3|258|0|17:11575:11575:BP_Ghoul_C:1201:1200:0",epoch,out _), "Enemy over-max");
+enemies.Expire(now.AddSeconds(3), _ => true);
+Require(Rows(enemies).Length == 0, "Expired enemy snapshot");
+Console.WriteLine("ENEMY SNAPSHOT TRANSPORT OK");

@@ -258,6 +258,7 @@ require("party_gameplay").install(Config, { every=every, log=log, current_world=
 require("party_visuals").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
 require("party_fx").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
 require("party_ammo").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
+require("party_enemies").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
 
 RegisterKeyBind(Key.F5, { ModifierKey.CONTROL }, function()
     ExecuteInGameThread(function() host() end)

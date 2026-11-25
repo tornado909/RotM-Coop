@@ -22,4 +22,6 @@ return {
     steam_lobbies_enabled = true,
     steam_ui_qa = false,
     network_motion_tuning = true,
+    -- Native enemy sync candidate, opt-in for QA only.
+    experimental_enemy_sync = false,
 }

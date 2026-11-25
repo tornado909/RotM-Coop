@@ -24,6 +24,7 @@ internal sealed class CombatEvents
     private readonly Dictionary<string, Message> effectStates = new();
     private readonly Dictionary<string, DateTime> endedEffects = new();
     private readonly Dictionary<string, Message> effectUpdates = new();
+    private readonly Dictionary<string, Timed> enemyBatches = new();
 
     public bool Dirty { get; private set; } = true;
 
@@ -86,6 +87,32 @@ internal sealed class CombatEvents
             return valid;
         }
 
+        if (p[0] == "N")
+        {
+            if (p.Length != 6 || !ParsePositive(p[2], out uint seq) ||
+                !ParsePositive(p[3], out uint recipient) || recipient > int.MaxValue ||
+                !uint.TryParse(p[4], NumberStyles.None, CultureInfo.InvariantCulture, out uint batch) || batch > 255)
+                return false;
+            var rows = p[5].Split(';');
+            if (rows.Length is < 1 or > 16) return false;
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var row in rows)
+            {
+                var r = row.Split(':');
+                if (r.Length != 7 ||
+                    !uint.TryParse(r[0], NumberStyles.None, CultureInfo.InvariantCulture, out uint index) || index > 65535 ||
+                    !uint.TryParse(r[1], NumberStyles.None, CultureInfo.InvariantCulture, out uint first) || first > int.MaxValue ||
+                    !uint.TryParse(r[2], NumberStyles.None, CultureInfo.InvariantCulture, out uint last) || last < first || last > int.MaxValue ||
+                    r[3].Length is < 1 or > 180 || !r[3].All(c => char.IsAsciiLetterOrDigit(c) || c is '/' or '_' or '.' or '-') ||
+                    !IsInRange(r[4], 0, 1_000_000_000) || !IsInRange(r[5], 0.001, 1_000_000_000) ||
+                    double.Parse(r[4], CultureInfo.InvariantCulture) > double.Parse(r[5], CultureInfo.InvariantCulture) ||
+                    r[6] is not ("0" or "1") || !keys.Add($"{index}:{first}:{last}"))
+                    return false;
+            }
+            message = new(text, "N", seq, $"{recipient}:{batch}", "");
+            return true;
+        }
+
         if (p[0] != "X" || p.Length < 7 ||
             !ParsePositive(p[2], out uint player) || player > int.MaxValue ||
             !ParsePositive(p[3], out uint cast) || !ParsePositive(p[4], out uint effect) ||
@@ -121,6 +148,12 @@ internal sealed class CombatEvents
             if (buffered.Events.Count == PeerInputLimit) buffered.Events.Dequeue();
             buffered.Events.Enqueue(new(message, now));
             input[peer] = (buffered.Events, message.Sequence);
+        }
+        else if (message.Kind == "N")
+        {
+            if (enemyBatches.TryGetValue(message.Effect, out Timed old) && old.Message.Sequence >= message.Sequence) return;
+            if (!enemyBatches.ContainsKey(message.Effect) && enemyBatches.Count >= 1024) return;
+            enemyBatches[message.Effect] = new(message, now);
         }
         else if (!ReceiveEffect(message, now)) return;
         Dirty = true;
@@ -162,6 +195,7 @@ internal sealed class CombatEvents
         effectStates.Clear();
         endedEffects.Clear();
         effectUpdates.Clear();
+        enemyBatches.Clear();
         Dirty = true;
     }
 
@@ -187,6 +221,8 @@ internal sealed class CombatEvents
                 Dirty = true;
             }
         }
+        foreach (var (key, item) in enemyBatches.ToArray())
+            if (item.At < samplesAfter) { enemyBatches.Remove(key); Dirty = true; }
         Dirty |= Expire(effectEvents, eventsAfter);
         foreach (var (key, endedAt) in endedEffects.ToArray())
             if (endedAt < eventsAfter) endedEffects.Remove(key);
@@ -210,7 +246,8 @@ internal sealed class CombatEvents
             .Concat(effectEvents.Select(item => item.Message.Text))
             .Concat(effectStates.Values.Select(item => item.Text))
             .Distinct(StringComparer.Ordinal)
-            .Concat(effectUpdates.Values.Select(item => item.Text)));
+            .Concat(effectUpdates.Values.Select(item => item.Text))
+            .Concat(enemyBatches.Values.Select(item => item.Message.Text)));
 
     public void MarkFlushed() => Dirty = false;
 }
