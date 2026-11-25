@@ -10,6 +10,8 @@ Windows x64 · Steam game build 1.0.0.301 · Experimental pre-release
 
 </div>
 
+> **Known critical issue in the 0.6.0 archive:** repeated guest join crashes have been reproduced. A targeted null-pointer guard is in development; the downloadable pre-release is not yet fixed. Do not use it for reliable co-op.
+
 RotMCoop adds online co-op to [Revenge of the Mage](https://store.steampowered.com/app/2287150/Revenge_of_the_Mage/). Create an in-game Steam lobby, invite friends and play with separate characters and spell loadouts. Steam P2P handles the connection; manual IP entry, port forwarding and VPN are not required for the Steam mode.
 
 ## Features

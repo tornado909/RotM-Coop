@@ -18,6 +18,8 @@ internal static class NativeGuards
     private static readonly byte[] AttributeSyncOriginal = Hex("4889542410534883EC20488BD9488D542438");
     private static readonly byte[] MageBeginOriginal = Hex("4881C1E00700008945D44C8BC78975D0");
     private static readonly byte[] MageControllerOriginal = Hex("488B819007000080B81209000000");
+    // EnemyDetection deactivation may run before its dependent object is available on a replicated pawn.
+    private static readonly byte[] DetectionDeactivateOriginal = Hex("488B8BC000000033D2488B01FF9090040000");
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint OpenProcess(uint access, bool inherit, int pid);
@@ -218,6 +220,7 @@ internal static class NativeGuards
             CheckBytes(handle, baseAddress, 0x5133C90, AttributeSyncOriginal);
             CheckBytes(handle, baseAddress, 0x50EA407, MageBeginOriginal);
             CheckBytes(handle, baseAddress, 0x510CC99, MageControllerOriginal);
+            CheckBytes(handle, baseAddress, 0x51D6859, DetectionDeactivateOriginal);
             if (dryRun) return "GUARDS_VERIFIED";
 
             // Null difficulty component: avoid a crash; actual component gets the original getter.
@@ -250,6 +253,13 @@ internal static class NativeGuards
                     Hex("80B81209000000"),
                     IndirectJump(site + MageControllerOriginal.Length),
                     IndirectJump(baseAddress + 0x510CCB5)), true);
+
+            // Keep the native deactivation and cleanup, skipping only the virtual
+            // call when the replicated dependency at +0xc0 is absent.
+            Patch(handle, baseAddress + 0x51D6859, DetectionDeactivateOriginal, site =>
+                Combine(Hex("488B8BC000000033D24885C97409"),
+                    Hex("488B01FF9090040000"),
+                    IndirectJump(site + DetectionDeactivateOriginal.Length)), true);
 
             return "GUARDS_INSTALLED";
         }
