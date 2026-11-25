@@ -101,7 +101,8 @@ function M.install(config,deps)
         for id,v in pairs(known)do
             local a=StaticFindObject(v.path)
             local reused=openPaths[v.pid..":"..v.path] and openPaths[v.pid..":"..v.path]~=id
-            local stale=now-v.last>8
+            -- A dormant actor may outlive its channel. Keep the mapping until the actor disappears or is reused.
+            local stale=host and v.terminalAt and now-v.terminalAt>30
             if stale then
                 known[id]=nil
             elseif host and v.terminal then
@@ -117,7 +118,7 @@ function M.install(config,deps)
                     if type(hp)=="number"and type(m)=="number"and m>=0.001 and m<=1000000000 and hp==hp then
                         local dead=a.bIsDead==true
                         local row=string.format("%s:%s:%.3f:%.3f:%d",v.key,v.class,dead and 0 or math.max(0,math.min(hp,m)),m,dead and 1 or 0)
-                        if dead then v.terminal=row end
+                        if dead then v.terminal=row;v.terminalAt=now end
                         queue(v,row)
                     end
                 elseif t and not host then

@@ -1,0 +1,3 @@
+## Changes
+Test candidate: actual Steam P2P between two independent PCs verified. Three consecutive card rounds, one native HUD, input release and five-second revival verified. Enemy snapshots retain dormant mappings; both delayed death messages received in a headless Steam retest. Rendered enemy death, raw camera input, headless host draft and full playthrough still require validation.
+Experimental enemy synchronization enabled. Install the same build on every PC. Windows x64, game build 1.0.0.301.

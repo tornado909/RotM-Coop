@@ -64,6 +64,7 @@ $Components = @(
     @{ From='Runtime\RotMCoop\Scripts\party_loadout.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_loadout.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_identity.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_identity.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_combat.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_combat.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\party_enemies.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_enemies.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_montage.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_montage.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_gate.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_gate.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_loading.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_loading.lua'; Loader=$false },
@@ -109,7 +110,7 @@ function Deploy-File {
     }
     Copy-Item -LiteralPath $From -Destination $To -Force
 }
-if ($PSCmdlet.ShouldProcess($GameRoot, 'Установка RotMCoop v0.6.3 Steam 480 P2P')) {
+if ($PSCmdlet.ShouldProcess($GameRoot, 'Установка RotMCoop v0.6.4 Steam 480 P2P')) {
     foreach ($c in $Components) {
         $keep = $c.To -eq 'ue4ss\Mods\RotMCoop\Scripts\config.lua'
         Deploy-File (Join-Path $Source $c.From) (Join-Path $Win64 $c.To) $keep
@@ -178,7 +179,7 @@ if ($PSCmdlet.ShouldProcess($GameRoot, 'Установка RotMCoop v0.6.3 Steam
         (Get-FileHash -LiteralPath $LegacyLauncher -Algorithm SHA256).Hash -eq $OldLauncherHash) {
         Move-Item -LiteralPath $LegacyLauncher -Destination "$LegacyLauncher.rotm-backup-$Stamp"
     }
-    Write-Host 'RotMCoop v0.6.3 установлен. Отдельный лаунчер не нужен.'
+    Write-Host 'RotMCoop v0.6.4 установлен. Отдельный лаунчер не нужен.'
     Write-Host 'Запускайте игру обычным способом через Steam. В главном меню появится СЕТЕВАЯ ИГРА.'
     Write-Host 'Игровые пакеты передаются через Steam P2P. Переадресация портов не требуется.'
 }

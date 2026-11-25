@@ -173,6 +173,16 @@ internal static class NativeGuards
                 Hex("488B01FF9090040000"),
                 IndirectJump(site + DetectionDeactivateOriginal.Length)));
     }
+    // SpawnSystemAttached returns null with NullRHI or unavailable Niagara
+    // assets. Skip only the cosmetic LoopDuration write, not ability damage.
+    private static void EnsureNiagaraSpawnGuard(nint h, long image)
+    {
+        byte[] original = Hex("0F28D6488BCB488B10E815E282FF");
+        EnsurePartyPatch(h, image + 0x5101EFD, original, site =>
+            Combine(Hex("4885DB7416"), original[..9],
+                Hex("49BB"), Address(image + 0x4930120), Hex("41FFD3"),
+                IndirectJump(site + original.Length)));
+    }
     internal static PartyHandle InstallParty(int pid, string exe)
     {
         VerifyGame(exe);
@@ -185,6 +195,7 @@ internal static class NativeGuards
         try
         {
             EnsureDetectionGuard(h, image);
+            EnsureNiagaraSpawnGuard(h, image);
             byte[] ui = Hex("48895C24104889742420574883EC40");
             EnsurePartyPatch(h, image + 0x5136D00, ui, site =>
                 Combine(Hex("F681C4060000017501C3"), ui, IndirectJump(site + ui.Length)));

@@ -4,13 +4,13 @@
 
 **Online co-op for Revenge of the Mage**
 
-[Download v0.6.3](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.3/RotMCoop-Win64-0.6.3-test.zip) · [Releases](https://github.com/tornado909/RotM-Coop/releases) · [Русский](README.ru.md)
+[Download v0.6.4](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.4/RotMCoop-Win64-0.6.4-test.zip) · [Releases](https://github.com/tornado909/RotM-Coop/releases) · [Русский](README.ru.md)
 
 Windows x64 · Steam game build 1.0.0.301 · Experimental pre-release
 
 </div>
 
-> **0.6.3 test candidate:** native repeated draft fix verified over three rounds in two local game instances. Primary release and HUD changes await graphical gameplay verification. Guest enemy death/targeting and host reconnect crash remain open.
+> **0.6.4 test candidate:** Test candidate: actual Steam P2P between two independent PCs verified. Three consecutive card rounds, one native HUD, input release and five-second revival verified. Enemy snapshots retain dormant mappings; both delayed death messages received in a headless Steam retest. Rendered enemy death, raw camera input, headless host draft and full playthrough still require validation.
 
 
 RotMCoop adds online co-op to [Revenge of the Mage](https://store.steampowered.com/app/2287150/Revenge_of_the_Mage/). Create an in-game Steam lobby, invite friends and play with separate characters and spell loadouts. Steam P2P handles the connection; manual IP entry, port forwarding and VPN are not required for the Steam mode.
@@ -42,11 +42,11 @@ These features are implemented, but not all have completed end-to-end gameplay v
 Requirements: Windows x64, Steam running and the exact game build **1.0.0.301**. Every participant must install the same mod version.
 
 1. Close the game.
-2. Download and extract [RotMCoop-Win64-0.6.3-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.3/RotMCoop-Win64-0.6.3-test.zip).
+2. Download and extract [RotMCoop-Win64-0.6.4-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.4/RotMCoop-Win64-0.6.4-test.zip).
 3. Run `Install-RotMCoop.cmd` and select the game root containing the `RevengeOfTheMage` subfolder.
 4. Launch Revenge of the Mage normally through Steam.
 
-The installer checks the executable hash, backs up replaced files, preserves existing mod configuration and unrelated UE4SS mods, and rejects incompatible loader files by default. No separate launcher is required. [SHA-256 checksums](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.3/SHA256SUMS.txt) are available.
+The installer checks the executable hash, backs up replaced files, preserves existing mod configuration and unrelated UE4SS mods, and rejects incompatible loader files by default. No separate launcher is required. [SHA-256 checksums](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.4/SHA256SUMS.txt) are available.
 
 ## How to play
 
