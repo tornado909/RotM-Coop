@@ -4,11 +4,13 @@
 
 **Сетевой кооператив для Revenge of the Mage**
 
-[Скачать v0.6.0](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/RotMCoop-Win64-0.6.0-test.zip) · [Релизы](https://github.com/tornado909/RotM-Coop/releases) · [English](https://github.com/tornado909/RotM-Coop/blob/main/README.md)
+[Скачать v0.6.1](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.1/RotMCoop-Win64-0.6.1-test.zip) · [Релизы](https://github.com/tornado909/RotM-Coop/releases) · [English](https://github.com/tornado909/RotM-Coop/blob/main/README.md)
 
 Windows x64 · Steam-версия игры 1.0.0.301 · Экспериментальная сборка
 
 </div>
+
+**0.6.1:** тестовое исправление вылета при входе гостя (EnemyDetectionComponent). Повторное подключение на двух ПК ещё не подтверждено.
 
 RotMCoop добавляет сетевой кооператив в [Revenge of the Mage](https://store.steampowered.com/app/2287150/Revenge_of_the_Mage/). Создавайте лобби Steam, приглашайте друзей и играйте отдельными персонажами со своими заклинаниями. Подключение через Steam P2P не требует ручного ввода IP, проброса портов или VPN.
 
@@ -39,11 +41,11 @@ RotMCoop добавляет сетевой кооператив в [Revenge of t
 Требования: Windows x64, запущенный Steam и точная версия игры **1.0.0.301**. У всех участников должна быть одинаковая версия мода.
 
 1. Закройте игру.
-2. Скачайте и распакуйте [RotMCoop-Win64-0.6.0-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/RotMCoop-Win64-0.6.0-test.zip).
+2. Скачайте и распакуйте [RotMCoop-Win64-0.6.1-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.1/RotMCoop-Win64-0.6.1-test.zip).
 3. Запустите `Install-RotMCoop.cmd` и выберите корневую папку игры, содержащую каталог `RevengeOfTheMage`.
 4. Запустите игру обычным способом через Steam.
 
-Установщик проверяет хеш EXE, сохраняет резервные копии заменяемых файлов, настройки мода и посторонние моды UE4SS. При несовместимом загрузчике установка по умолчанию останавливается. Отдельный лаунчер не нужен. [Контрольные суммы SHA-256](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/SHA256SUMS.txt).
+Установщик проверяет хеш EXE, сохраняет резервные копии заменяемых файлов, настройки мода и посторонние моды UE4SS. При несовместимом загрузчике установка по умолчанию останавливается. Отдельный лаунчер не нужен. [Контрольные суммы SHA-256](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.1/SHA256SUMS.txt).
 
 ## Как играть
 
