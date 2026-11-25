@@ -35,6 +35,14 @@ function Module.install(config, callbacks)
     local max_attempts = tonumber(config.max_reconnect_attempts) or 5
     local retry_seconds = tonumber(config.reconnect_interval_seconds) or 30
 
+    function Module.note_host()
+        session.requested = false
+        session.connected = false
+        session.attempts = 0
+        session.disconnected_at = 0
+        session.last_join = 0
+    end
+
     function Module.note_join()
         -- Each Steam lobby map epoch triggers a new actual Unreal login.
         -- Clear the old pawn-ready edge; otherwise a new possession on the
@@ -120,6 +128,10 @@ function Module.install(config, callbacks)
 
             local world = current_world()
             if not valid(world) or not valid(system) then return end
+            if system:IsServer(world) and not system:IsStandalone(world) then
+                Module.note_host()
+                return
+            end
             local now = os.time()
             if monitor_ticks % 10 == 0 then
                 log("Reconnect monitor: mode="
@@ -128,9 +140,6 @@ function Module.install(config, callbacks)
                     .. " attempts=" .. session.attempts
                     .. " elapsed=" .. tostring(now-session.last_join)
                     .. " world=" .. world:GetFullName())
-            end
-            if system:IsServer(world) and not system:IsStandalone(world) then
-                return
             end
             if not system:IsStandalone(world) then
                 if valid(statics) then

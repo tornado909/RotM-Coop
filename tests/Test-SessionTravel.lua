@@ -111,5 +111,20 @@ module.note_join()
 watchdog()
 assert(guest_ready_count == 2,
     "Second possession after Steam epoch change must report game_ready")
+-- Guest -> host -> menu must not reconnect to a previous guest endpoint.
+mode="server"
+watchdog()
+mode="standalone"
+world.name="World /Game/Arenas/MainMenu/MainMenu.MainMenu"
+clock=clock+60
+watchdog()
+clock=clock+60
+watchdog()
+assert(joins==1,"Host transition must discard previous guest retry state")
+module.note_join()
+module.note_host()
+clock=clock+60
+watchdog()
+assert(joins==1,"Explicit host action must cancel old guest retry state")
 os.time = real_time
-print("Session travel gate tests passed")
+print("Session travel gate and role-reset tests passed")

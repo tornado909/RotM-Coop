@@ -177,6 +177,7 @@ local function host(explicit_map)
         log("Hosting with the Unreal GameModeBase control")
         options = options .. "?game=/Script/Engine.GameModeBase"
     end
+    if session_travel then session_travel.note_host() end
     travel(world, "open " .. map .. options, "host")
 end
 
