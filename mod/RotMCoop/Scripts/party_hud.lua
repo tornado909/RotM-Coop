@@ -238,7 +238,13 @@ local function paintBar(parts, value, max)
         local progress = lookup(parts[name])
         if valid(progress) then progress:SetPercent(percent) end
     end
-    text(lookup(parts.TextBlockValue), string.format("%d / %d", value, max))
+    local combined=lookup(parts.TextBlockValue)
+    local split=valid(lookup(parts.TextBlockValueMin)) and valid(lookup(parts.TextBlockValueMax))
+    if split then
+        if valid(combined) then combined:SetVisibility(1) end
+    else
+        text(combined, string.format("%d / %d", value, max))
+    end
     text(lookup(parts.TextBlockValueMin), tostring(value))
     text(lookup(parts.TextBlockValueMax), tostring(max))
     text(lookup(parts.TextBlockPercentage), string.format("%d%%", math.floor(percent * 100 + 0.5)))

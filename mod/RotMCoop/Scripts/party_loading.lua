@@ -68,7 +68,21 @@ function M.install(config,deps)
         local possessed=valid(p) and p:IsA("/Script/RevengeOfTheMage.RM_MageBase") and not sys:IsStandalone(w) and p:IsLocallyControlled()
         if possessed or state.status=="connecting_game" or state.status=="patched" then engaged=true end
         local message=M.message(state,name(w),possessed,engaged)
+        local finishing=not message and valid(screen) and possessed
+            and state.status=="playing" and state.session_stage~="loading"
         draw(message,w,c)
+        if finishing then
+            -- Restore viewport mouse capture after the native loading widget
+            -- is removed. Do this once at the travel boundary, not per tick.
+            local lib=StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary")
+            if valid(lib) and valid(c) then
+                local ok,e=pcall(function()
+                    c.bShowMouseCursor=false
+                    lib:SetInputMode_GameOnly(c,true)
+                end)
+                deps.log(ok and "Party travel input restored" or "Party travel input restore failed: "..tostring(e))
+            end
+        end
         if message and valid(screen) and screen:IsInViewport() and name(w):find("/MainMenu/",1,true)then
             for _,menu in ipairs(FindAllOf("BPW_MainMenu_C")or{})do
                 if valid(menu) and menu:IsInViewport()then

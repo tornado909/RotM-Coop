@@ -70,7 +70,7 @@ function M.decodeInput(line, epoch) return decode(line, epoch, "I") end
 function M.recordInput(state, input, now)
     local previous = state[input.slot]
     if previous and input.seq <= previous.seq then return false end
-    state[input.slot] = {seq=input.seq, down=input.down, at=now}
+    state[input.slot] = {seq=input.seq, down=input.down, at=now, releaseApplied=previous and previous.down==input.down and previous.releaseApplied or nil}
     return true
 end
 
@@ -117,6 +117,22 @@ local function pressed(asc)
         if combatSlot[s.InputID] then result[s.InputID] = s.InputPressed == true end
     end
     return result
+end
+
+-- GAS InputPressed can stay true after a ServerOnly ability has consumed
+-- the original mouse-up. Prefer the actual controller key state for the
+-- stock primary binding; retain native input if the reflected call fails.
+function M.primaryState(native, mouse, blocked)
+    if blocked then return false end
+    if type(mouse)=="boolean" then return mouse end
+    return native==true
+end
+
+local function primaryMouse(controller)
+    local ok,value=pcall(function()
+        return controller:IsInputKeyDown({KeyName=FName("LeftMouseButton")})
+    end)
+    if ok and type(value)=="boolean" then return value end
 end
 
 local function applyAim(actor, aim)
@@ -217,8 +233,28 @@ function M.install(config, deps)
         reloadQueue, reloadEdges = {}, {}
     end
 
-    local function sendInput(epoch, payload, actor, now)
+    local mouseStateLogged=false
+    local function sendInput(epoch, payload, actor, now, blocked)
         local state = pressed(actor.asc)
+        local mouse
+        if config.party_primary_mouse_guard~=false and not blocked then
+            mouse=primaryMouse(actor.controller)
+            if not mouseStateLogged then
+                mouseStateLogged=true
+                deps.log("Party primary mouse state: "..(type(mouse)=="boolean" and "controller" or "native fallback"))
+            end
+        end
+        if state[1]~=nil then
+            local down=M.primaryState(state[1],mouse,blocked)
+            if state[1] and not down then actor.asc:ReleaseInputID(1) end
+            state[1]=down
+        end
+        if blocked then
+            for slot,down in pairs(state)do
+                if down then actor.asc:ReleaseInputID(slot) end
+                state[slot]=false
+            end
+        end
         for _, slot in ipairs(slots) do
             local down, old = state[slot], sentInput[slot]
             if down ~= nil and (not old or old.down ~= down or now-old.at >= 0.5) then
@@ -255,7 +291,7 @@ function M.install(config, deps)
         end
     end
 
-    local function releaseInput(actor, sid, now)
+    local function releaseInput(actor, sid, now, blocked)
         local state = inputs[sid]
         if not state then return end
         local native = pressed(actor.asc)
@@ -268,7 +304,7 @@ function M.install(config, deps)
                 if spec.InputID==8 and valid(spec.Ability) and spec.Ability.NetExecutionPolicy==3
                     and spec.Ability.NetSecurityPolicy==1 then ownedReload=true;break end
             end
-            if ownedReload and not actor.pawn.bIsDead then
+            if ownedReload and not actor.pawn.bIsDead and not blocked then
                 for _,down in ipairs(queue) do
                     if down and not native[8] then actor.asc:PressInputID(8);native[8]=true
                     elseif not down and native[8] then actor.asc:ReleaseInputID(8);native[8]=false end
@@ -276,7 +312,15 @@ function M.install(config, deps)
             end
         end
         for slot, entry in pairs(state) do
-            if (not entry.down or now-entry.at>2) and native[slot] then actor.asc:ReleaseInputID(slot) end
+            if blocked or not entry.down or now-entry.at>2 then
+                -- A ServerOnly spec can report false while its native ability
+                -- still waits for release. Deliver each release edge once,
+                -- then reconcile any still-pressed spec on subsequent ticks.
+                if native[slot] or not entry.releaseApplied then
+                    actor.asc:ReleaseInputID(slot)
+                    entry.releaseApplied=true
+                end
+            end
         end
     end
 
@@ -353,7 +397,9 @@ function M.install(config, deps)
             reset(key)
         end
         if not world then return end
-        local now = H.GetGameplayStatics():GetRealTimeSeconds(world)
+        local stat=H.GetGameplayStatics()
+        local now = stat:GetRealTimeSeconds(world)
+        local paused=stat:IsGamePaused(world)
         if not host then
             local payload, actor = localAim(world)
             if actor then authorityPolicy(actor, savedPolicies, deps.log) end
@@ -363,7 +409,7 @@ function M.install(config, deps)
                     lastPayload, lastSent = payload, now
                 end
             end
-            if payload then sendInput(epoch, payload, actor, now) end
+            if payload then sendInput(epoch, payload, actor, now, paused or actor.controller.bShowMouseCursor==true) end
             return
         end
 
@@ -392,12 +438,12 @@ function M.install(config, deps)
                 local currentAim=aimByPlayer[actor.id]
                 applyAim(actor, currentAim)
                 if currentAim and not H.GetGameplayStatics():IsGamePaused(world) then updateLeapTarget(actor) end
-                releaseInput(actor, profile.sid, now)
-                processReload(actor, profile.sid, now)
+                releaseInput(actor, profile.sid, now, paused)
+                if not paused then processReload(actor, profile.sid, now) end
             end
         end
         for _, actor in pairs(active) do
-            if actor.controller.bIsLocalPlayerController then processReload(actor,nil,now) end
+            if not paused and actor.controller.bIsLocalPlayerController then processReload(actor,nil,now) end
         end
     end
 

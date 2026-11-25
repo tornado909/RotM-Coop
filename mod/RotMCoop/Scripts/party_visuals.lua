@@ -299,13 +299,13 @@ function M.install(config,deps)
         lastSnapshot,lastSnapshotTime,previousSnapshot=nil,nil,nil
         castPawns={};castActive={};castRoles={};castEpoch=0;lastRemoteSeq=0;castHost=false;castReadAt=nil
     end
-    local function syncVitals(pc,hud)
+    local function syncVitals(pc,hud,host)
         local p=pc.Pawn
         if not valid(p) or not valid(p.AbilitySystemComponent)then return end
         local list=p.AbilitySystemComponent.SpawnedAttributes
         local hp,maxhp,armor,maxarmor
         for i=1,#list do local a=list[i]
-            if valid(a) and a:IsA("/Script/RevengeOfTheMage.RM_AttributeSetBase") then
+            if valid(a) and a:IsA("/Script/RevengeOfTheMage.RM_AttributeSetBase") and same(a:GetOuter(),p) then
                 hp=a.HealthPower.CurrentValue;maxhp=a.MaxHealth.CurrentValue
                 armor=a.Armor.CurrentValue;maxarmor=a.MaxArmor.CurrentValue;break
             end
@@ -317,12 +317,18 @@ function M.install(config,deps)
             local pct=m>0 and math.max(0,math.min(1,v/m))or 0
             local tree=b.WidgetTree
             if not valid(tree)then return end
+            local combined=StockHUD.child(tree.RootWidget,"TextBlockValue")
+            local min=StockHUD.child(tree.RootWidget,"TextBlockValueMin")
+            local max=StockHUD.child(tree.RootWidget,"TextBlockValueMax")
+            local split=valid(min) and valid(max)
+            if split and valid(combined) then combined:SetVisibility(1) end
+            if host then return end
             local function visit(o)
                 if not valid(o)then return end
                 local n=o:GetFName():ToString()
                 if n=="ProgressBar" or n=="DelayedProgressBar"then o:SetPercent(pct)
                 elseif n=="TextBlockPercentage"then text(o,math.floor(pct*100+0.5).."%")
-                elseif n=="TextBlockValue"then text(o,string.format("%.0f / %.0f",v,m))
+                elseif n=="TextBlockValue" and not split then text(o,string.format("%.0f / %.0f",v,m))
                 elseif n=="TextBlockValueMin"then text(o,string.format("%.0f",v))
                 elseif n=="TextBlockValueMax"then text(o,string.format("%.0f",m))end
                 local ok,count=pcall(function()return o:GetChildrenCount()end)
@@ -356,7 +362,7 @@ function M.install(config,deps)
         local pc=st:GetPlayerController(w,0)
         if not valid(pc) or not valid(pc.Pawn)then allyHud.clear();return end
         local stockHud=StockHUD.local_hud(st,w,pc)
-        safe("local HUD",function()syncVitals(pc,stockHud)end)
+        safe("local HUD",function()syncVitals(pc,stockHud,sys:IsServer(w))end)
         local now=st:GetRealTimeSeconds(w)
         local gameTime=st:GetTimeSeconds(w)
         if worldReadyAt==0 then worldReadyAt=now end
