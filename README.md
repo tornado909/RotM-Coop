@@ -2,68 +2,87 @@
 
 # Revenge of the Mage · Co-op
 
-**Explore the arenas together. Build your own mage. Revive your allies.**
+**Online co-op for Revenge of the Mage**
 
-[Download v0.6.0](https://github.com/tornado909/RotM-Coop/releases/tag/v0.6.0) · [Installation](#installation) · [How to play](#how-to-play) · [Русский](README.ru.md)
+[Download v0.6.0](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/RotMCoop-Win64-0.6.0-test.zip) · [Releases](https://github.com/tornado909/RotM-Coop/releases) · [Русский](README.ru.md)
 
-Windows x64 · Steam 1.0.0.301 · Experimental release
+Windows x64 · Steam game build 1.0.0.301 · Experimental pre-release
 
 </div>
 
----
-
-RotMCoop adds online cooperative play to [Revenge of the Mage](https://store.steampowered.com/app/2287150/Revenge_of_the_Mage/). Create a Steam lobby, invite friends and enter the arenas together. Steam P2P handles the connection; no port forwarding, VPN or manual IP entry is needed.
+RotMCoop adds online co-op to [Revenge of the Mage](https://store.steampowered.com/app/2287150/Revenge_of_the_Mage/). Create an in-game Steam lobby, invite friends and play with separate characters and spell loadouts. Steam P2P handles the connection; manual IP entry, port forwarding and VPN are not required for the Steam mode.
 
 ## Features
 
 | Multiplayer | Gameplay |
 | --- | --- |
-| In-game lobby browser and Steam invitations | Individual spell loadouts and aiming |
-| Host-controlled sessions, up to four lobby slots | Personal card choices and a shared selection pause |
-| Automatic reconnection between maps | Arena gate recovery for players left behind |
-| Native loading screen with connection status | Five-second ally revival with 50% health |
+| Steam lobby browser and friend invitations | Individual mage schools, spells and card choices |
+| Up to four lobby slots | Simultaneous combat and native automatic/manual reload |
+| Connection status and automatic reconnect attempts | Server-authoritative ammo, aim and spell effects |
+| Native co-op menu in 14 languages | Ally models, school colors and through-wall outlines |
+| Shared pause during card selection | Ally HUD with health, armor, spell charges and cooldowns |
+| Arena travel and gate recovery | Five-second ally revival with 50% health |
 
-Two-player sessions have been tested. Four-player gameplay, every spell type and full-party defeat still need wider testing.
+These features are implemented, but not all have completed end-to-end gameplay validation.
+
+## What's new in 0.6.0
+
+- Per-player animation event isolation fixes the shared primary-attack stall observed in Fire/Fire testing.
+- Native reload and server-authoritative ammo synchronization replace artificial refill behavior.
+- Improved vertical aiming and spell effect synchronization, including LavaLeap targeting and landing.
+- Native ally HUD, spell icons, charges and cooldowns.
+- Localized multiplayer controls, loading and party status.
+- Combat transport v2. **0.5.9 and 0.6.0 cannot join each other's lobbies.**
 
 ## Installation
 
-**Requirements:** Windows 64-bit, a running Steam client, and game build **1.0.0.301**. All players must use the same mod version.
+Requirements: Windows x64, Steam running and the exact game build **1.0.0.301**. Every participant must install the same mod version.
 
 1. Close the game.
-2. Download [RotMCoop-Win64-0.6.0-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/RotMCoop-Win64-0.6.0-test.zip) and extract it.
-3. Run `Install-RotMCoop.cmd` from the extracted folder.
-4. Select the game directory containing the `RevengeOfTheMage` folder.
-5. Launch the game normally through Steam.
+2. Download and extract [RotMCoop-Win64-0.6.0-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/RotMCoop-Win64-0.6.0-test.zip).
+3. Run `Install-RotMCoop.cmd` and select the game root containing the `RevengeOfTheMage` subfolder.
+4. Launch Revenge of the Mage normally through Steam.
 
-The installer verifies the game executable, backs up replaced files and preserves unrelated UE4SS mods. No separate launcher is needed. If the game has been updated or another UE4SS version is present, installation stops rather than silently replacing incompatible files.
+The installer checks the executable hash, backs up replaced files, preserves existing mod configuration and unrelated UE4SS mods, and rejects incompatible loader files by default. No separate launcher is required. [SHA-256 checksums](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/SHA256SUMS.txt) are available.
 
 ## How to play
 
 | Host | Guest |
 | --- | --- |
-| Open **СЕТЕВАЯ ИГРА** (Multiplayer). | Open the game with Steam online. |
-| Select **СОЗДАТЬ ЛОББИ** (Create lobby). | Accept the Steam invitation or select **НАЙТИ ЛОББИ** (Find lobby). |
-| Use **ПРИГЛАСИТЬ ДРУГА** (Invite friend). | Select the host's lobby and wait for the host. |
-| Press **НАЧАТЬ ИГРУ** (Start game). | Enter the hub automatically when the host is ready. |
+| Open **CO-OP → CREATE LOBBY**. | Open the game with Steam online. |
+| Select **INVITE FRIEND**, then invite a player from the list. | Accept the invitation or select **CO-OP → FIND LOBBY**. |
+| Press **START GAME**. | Join the room and wait for the host to enter the hub. |
 
-The current multiplayer menu uses Russian labels. Steam invitations may appear as **Spacewar**, because the experimental bridge uses Steamworks test AppID 480.
+Menu text follows the game's language (English fallback). The 14 supported languages are English, Arabic, German, Spanish, French, Japanese, Korean, Polish, Brazilian and European Portuguese, Russian, Turkish, Simplified and Traditional Chinese.
 
-During a run, choose your own cards. The game resumes once all participating players have chosen. To revive a downed ally, stay inside their revival zone for five seconds.
+Invitations may appear as **Spacewar** because the experimental Steam bridge uses AppID 480. Keep the game running when accepting an invitation. During a run, choose your own upgrade cards; the party resumes after the participating players finish choosing. To revive an ally, stay in their revival zone for five seconds.
 
-## Compatibility and troubleshooting
+## Test status and known limitations
 
-- Only Steam build 1.0.0.301 is supported; other executable versions are rejected by the installer.
-- The original game executable is not modified on disk. The mod uses UE4SS and version-specific in-memory patches.
-- Back up your saves before testing. This is an unofficial experimental modification, not an official multiplayer mode.
-- If connection fails, check that both players have the same mod version, are online in Steam, and have the game running before inviting.
+| Test | Status |
+| --- | --- |
+| Steam connection between two PCs and hub entry | Passed |
+| Simultaneous Fire primary attacks | Passed: 313 seconds, 38 host and 53 guest reloads |
+| Positive/negative vertical aim | Verified in diagnostic projectile traces |
+| Fire/Ice simultaneous primary and reload | Passed in subsequent hub QA |
+| All six school loadouts | Granted in subsequent hub QA; not all spells validated |
+| Lua regression tests | 17/17 passed |
+| Four-player transport | Automated test passed; four-player gameplay not certified |
+| Full run, normal portal, all spells, overlapping effects, damage ownership and revival | Full acceptance pending |
+
+The subsequent six-school diagnostic tests did not confirm sustained primary attacks for every school. In particular LightningStrike, ArcaneMissiles and ArcOfDarkness did not show activation or ammo expenditure during held input in the empty hub. Blood primary sustained behavior also needs validation. These are unresolved test results, not proof that the spells fail in every arena.
+
+This is an experimental mod, not a stable release. Back up saves. The two-PC combat tests used diagnostic native ability input, not a complete manual playthrough.
+
+## Troubleshooting
+
+- Check the game build, mod version and Steam connectivity on every PC.
+- Use the in-game invitation button rather than relying on the Steam overlay.
 - To disable the mod, close the game and set `RotMCoop : 0` in `RevengeOfTheMage/Binaries/Win64/ue4ss/Mods/mods.txt`.
-
-For bug reports, include the game version, mod version, host/guest role, reproduction steps and relevant excerpts from `ue4ss/UE4SS.log` and `ue4ss/Mods/RotMCoop/Scripts/steam-ipc/state.txt`. Remove personal identifiers from logs before posting.
+- For a [bug report](https://github.com/tornado909/RotM-Coop/issues), include host/guest role, mage school, ability, reproduction steps and relevant excerpts from `ue4ss/UE4SS.log` and `ue4ss/Mods/RotMCoop/Scripts/steam-ipc/state.txt`. Remove personal identifiers before sharing.
 
 ## Development
 
-The Lua runtime lives in [mod/](mod/), the .NET Steam transport in [steam-bridge/](steam-bridge/), and regression tests in [tests/](tests/). See [architecture and build instructions](docs/ARCHITECTURE.md).
+[Lua runtime](mod/) · [Steam bridge](steam-bridge/) · [Tests](tests/) · [Architecture](docs/ARCHITECTURE.md) · [Build workflow](.github/workflows/release-060.yml)
 
-## Credits
-
-Built for Revenge of the Mage using [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) (MIT) and the Steamworks API. Game assets and the game executable are not included. Not affiliated with the game developers or Valve.
+Built with [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS) and Steamworks. No game assets or game executable are distributed. Unofficial; not affiliated with the game developers or Valve.
