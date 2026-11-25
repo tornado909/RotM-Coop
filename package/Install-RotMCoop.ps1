@@ -109,7 +109,7 @@ function Deploy-File {
     }
     Copy-Item -LiteralPath $From -Destination $To -Force
 }
-if ($PSCmdlet.ShouldProcess($GameRoot, 'Установка RotMCoop v0.5.9 Steam 480 P2P')) {
+if ($PSCmdlet.ShouldProcess($GameRoot, 'Установка RotMCoop v0.6.0 Steam 480 P2P')) {
     foreach ($c in $Components) {
         $keep = $c.To -eq 'ue4ss\Mods\RotMCoop\Scripts\config.lua'
         Deploy-File (Join-Path $Source $c.From) (Join-Path $Win64 $c.To) $keep
@@ -178,7 +178,7 @@ if ($PSCmdlet.ShouldProcess($GameRoot, 'Установка RotMCoop v0.5.9 Steam
         (Get-FileHash -LiteralPath $LegacyLauncher -Algorithm SHA256).Hash -eq $OldLauncherHash) {
         Move-Item -LiteralPath $LegacyLauncher -Destination "$LegacyLauncher.rotm-backup-$Stamp"
     }
-    Write-Host 'RotMCoop v0.5.9 установлен. Отдельный лаунчер не нужен.'
+    Write-Host 'RotMCoop v0.6.0 установлен. Отдельный лаунчер не нужен.'
     Write-Host 'Запускайте игру обычным способом через Steam. В главном меню появится СЕТЕВАЯ ИГРА.'
     Write-Host 'Игровые пакеты передаются через Steam P2P. Переадресация портов не требуется.'
 }
