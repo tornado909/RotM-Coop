@@ -10,7 +10,7 @@ local function log(message)
 end
 
 -- One dispatcher owns every periodic UE4SS callback; no concurrent Lua timers.
-local jobs,clock,busy={},0,false
+local jobs,clock={},0
 local function every(ms,fn)
     jobs[#jobs+1]={ms=ms,fn=fn,next=clock+ms}
 end
@@ -35,37 +35,40 @@ end
 -- Wait for a live controller in a real world, stable across successive frames.
 local startup = require("startup_gate").new(1500)
 local function start_dispatcher()
-    LoopAsync(100,function()
-        if busy then return false end
-        busy=true
-        ExecuteInGameThread(function()
-            local ok,e=pcall(function()
-                clock=clock+100
-                if not startup.ready then
-                    local w=current_world()
-                    local id=valid(w) and full_name(w) or ""
-                    local ready=false
-                    if id:find("/Game/Arenas/",1,true) then
-                        local st=UEHelpers.GetGameplayStatics()
-                        local c=valid(st) and st:GetPlayerController(w,0)
-                        ready=valid(c) and c.bIsLocalPlayerController==true
-                    end
-                    if not startup:step(id,ready,100) then return end
-                    log("Startup gate: stable game world and local controller")
+    local function dispatch()
+        local ok,e=pcall(function()
+            clock=clock+16
+            if not startup.ready then
+                local w=current_world()
+                local id=valid(w) and full_name(w) or ""
+                local ready=false
+                if id:find("/Game/Arenas/",1,true) then
+                    local st=UEHelpers.GetGameplayStatics()
+                    local c=valid(st) and st:GetPlayerController(w,0)
+                    ready=valid(c) and c.bIsLocalPlayerController==true
                 end
-                for _,job in ipairs(jobs)do
-                    if clock>=job.next then
-                        job.next=clock+job.ms
-                        local safe,err=pcall(job.fn)
-                        if not safe then log("Dispatcher: "..tostring(err)) end
-                    end
+                if not startup:step(id,ready,16) then return end
+                log("Startup gate: stable game world and local controller")
+            end
+            for _,job in ipairs(jobs)do
+                if clock>=job.next then
+                    job.next=clock+job.ms
+                    local safe,err=pcall(job.fn)
+                    if not safe then log("Dispatcher: "..tostring(err)) end
                 end
-            end)
-            busy=false
-            if not ok then log("Startup dispatcher: "..tostring(e)) end
+            end
         end)
-        return false
-    end)
+        if not ok then log("Startup dispatcher: "..tostring(e)) end
+    end
+    if type(LoopInGameThreadWithDelay) == "function" then
+        LoopInGameThreadWithDelay(16, dispatch)
+    else
+        local function schedule()
+            dispatch()
+            ExecuteInGameThreadWithDelay(16, schedule)
+        end
+        ExecuteInGameThreadWithDelay(16, schedule)
+    end
 end
 
 local function current_map_path(world)
@@ -247,10 +250,13 @@ steam_menu.install(Config, {
 })
 
 require("party_loadout").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, profiles=steam_menu.profiles })
-require("party_identity").install(Config, { every=every, log=log, current_world=current_world })
+require("party_combat").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party, profiles=steam_menu.profiles })
 require("party_gate").install(Config, { every=every, log=log, current_world=current_world })
 require("party_loading").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state })
 require("party_gameplay").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
+require("party_visuals").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
+require("party_fx").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
+require("party_ammo").install(Config, { every=every, log=log, current_world=current_world, state=steam_menu.get_state, send=steam_menu.send_party, read=steam_menu.read_party })
 
 RegisterKeyBind(Key.F5, { ModifierKey.CONTROL }, function()
     ExecuteInGameThread(function() host() end)

@@ -48,14 +48,18 @@ function M.apply(p,robe,slots,log)
     local items=asc.ActivatableAbilities.Items; for j=1,#items do local spec=items[j]
         local id=tonumber(spec.InputID)
         if id and id>=1 and id<=4 and valid(spec.Ability) then
-            if spec.ActiveCount>0 then return false,"active ability" end
             existing[id]=existing[id] or {}
-            existing[id][#existing[id]+1]={class=spec.Ability:GetClass(),level=spec.Level}
+            existing[id][#existing[id]+1]={class=spec.Ability:GetClass(),level=spec.Level,active=spec.ActiveCount>0}
         end
     end
     for i=1,4 do
         local a=existing[i] or {}
-        if #a~=1 or className(a[1].class)~=slots[i] then change[#change+1]=i end
+        if #a~=1 or className(a[1].class)~=slots[i] then
+            for _, spec in ipairs(a) do
+                if spec.active then return false, "active ability" end
+            end
+            change[#change+1]=i
+        end
     end
     local applied={}
     for _,i in ipairs(change) do

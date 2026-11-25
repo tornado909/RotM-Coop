@@ -1,3 +1,4 @@
+package.path="mod/RotMCoop/Scripts/?.lua;"..package.path
 package.preload.UEHelpers=function() return {} end
 local path="mod/RotMCoop/Scripts/"
 local l=dofile(path.."party_loadout.lua")

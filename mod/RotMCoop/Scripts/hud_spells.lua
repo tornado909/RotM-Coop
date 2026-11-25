@@ -19,6 +19,8 @@ local KEY_TEXTURE_NAMES = {
     "E_Key_Light",
     "Shift_Key_Light",
 }
+Module.slots = SLOT_NAMES
+Module.inputs = ABILITY_INPUTS
 
 local function valid(obj)
     local ok, result = pcall(function() return obj and obj:IsValid() end)
@@ -31,14 +33,20 @@ local function fullname(obj)
     return ok and tostring(name) or ""
 end
 
-local function find_child(root, suffix)
+local function find_children(root, fields)
+    local wanted, result = {}, {}
+    local remaining = #fields
+    for _, name in ipairs(fields) do wanted[name] = true end
     local queue, cursor = { root }, 1
-    while cursor <= #queue and cursor < 110 do
+    while remaining > 0 and cursor <= #queue and cursor <= 200 do
         local item = queue[cursor]
         cursor = cursor + 1
         if valid(item) then
-            local name = fullname(item)
-            if name:sub(-#suffix) == suffix then return item end
+            local name = fullname(item):match("([^.:/ ]+)$")
+            if wanted[name] then
+                result[name], wanted[name] = item, nil
+                remaining = remaining - 1
+            end
             local ok, count = pcall(function() return item:GetChildrenCount() end)
             if ok and type(count) == "number" then
                 for i = 0, math.min(30, count - 1) do
@@ -48,9 +56,18 @@ local function find_child(root, suffix)
                     end
                 end
             end
+            local has_tree, tree = pcall(function() return item.WidgetTree end)
+            if has_tree and valid(tree) and valid(tree.RootWidget) then queue[#queue + 1] = tree.RootWidget end
         end
     end
+    return result
 end
+local function find_child(root, name)
+    return find_children(root, {name})[name]
+end
+
+Module.child = find_child
+Module.children = find_children
 
 local function paint(image, texture)
     if not valid(image) or not valid(texture) then return false end
@@ -63,6 +80,41 @@ local function paint(image, texture)
     if needs_texture then image:SetBrushFromTexture(texture, false) end
     if needs_visibility then image:SetVisibility(0) end
     return true
+end
+Module.paint = paint
+
+-- Use the viewport instance under the current GameInstance. Its class
+-- default and a HUD from another player can share the same widget names.
+function Module.local_hud(statics, world, controller)
+    local gi = statics:GetGameInstance(world)
+    local gi_name = fullname(gi):match("^%S+ (.+)$")
+    if not gi_name then return end
+    local hud, fallback, count = nil, nil, 0
+    for _, widget in ipairs(FindAllOf("BPW_GameHUD_C") or {}) do
+        if valid(widget) and fullname(widget):find(gi_name .. ".", 1, true) then
+            local owner_ok, owner = pcall(function() return widget:GetOwningPlayer() end)
+            if not owner_ok or not valid(owner) or fullname(owner) == fullname(controller) then
+                count = count + 1
+                fallback = widget
+                local ok, in_viewport = pcall(function() return widget:IsInViewport() end)
+                if ok and in_viewport == true then
+                    if hud then return end
+                    hud = widget
+                end
+            end
+        end
+    end
+    return hud or (count == 1 and fallback or nil)
+end
+
+function Module.spell_panel(hud)
+    if not valid(hud) then return end
+    if valid(hud.ActiveSpellsPanel) then return hud.ActiveSpellsPanel end
+    local hud_id = fullname(hud):match("^%S+ (.+)$")
+    if not hud_id then return end
+    for _, widget in ipairs(FindAllOf("BPW_ActiveSpellsPanel_C") or {}) do
+        if valid(widget) and fullname(widget):find(hud_id .. ".", 1, true) then return widget end
+    end
 end
 
 function Module.install(config, deps)
@@ -84,37 +136,9 @@ function Module.install(config, deps)
         local robe = pawn.CharacterRobeComponent
         if not valid(robe) then return end
 
-        -- HUD_InGame is an AHUD, not the game-instance-owned UMG widget.
-        local gi = statics:GetGameInstance(world)
-        local gi_name = fullname(gi):match("^%S+ (.+)$")
-        if not gi_name then return end
-        local hud, fallback, count
-        count = 0
-        for _, widget in ipairs(FindAllOf("BPW_GameHUD_C") or {}) do
-            if valid(widget) and fullname(widget):find(gi_name .. ".", 1, true) then
-                local owner_ok, owner = pcall(function() return widget:GetOwningPlayer() end)
-                if not owner_ok or not valid(owner) or fullname(owner) == fullname(controller) then
-                    count = count + 1
-                    fallback = widget
-                    local ok, in_viewport = pcall(function() return widget:IsInViewport() end)
-                    if ok and in_viewport == true then
-                        if hud then return end
-                        hud = widget
-                    end
-                end
-            end
-        end
-        if not hud and count == 1 then hud = fallback end
+        local hud = Module.local_hud(statics, world, controller)
         if not valid(hud) then return end
-        local hud_id = fullname(hud):match("^%S+ (.+)$")
-        if not hud_id then return end
-        local panel
-        for _, widget in ipairs(FindAllOf("BPW_ActiveSpellsPanel_C") or {}) do
-            if valid(widget) and fullname(widget):find(hud_id .. ".", 1, true) then
-                panel = widget
-                break
-            end
-        end
+        local panel = Module.spell_panel(hud)
         if not valid(panel) then return end
 
         local abilities = {}

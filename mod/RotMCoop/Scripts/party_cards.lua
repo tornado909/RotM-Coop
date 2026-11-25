@@ -1,3 +1,4 @@
+local L=require("localization")
 -- Authoritative per-player drafts. Only the server rolls and applies cards.
 local H=require("UEHelpers")
 local M={}
@@ -24,6 +25,7 @@ function M.parse(raw,epoch)
     end
     return result
 end
+function M.enabledStage(stage) return stage=="hub" or stage=="run" end
 function M.complete(players)
     local count=0
     for _,v in pairs(players)do count=count+1;if not v.done then return false end end
@@ -56,6 +58,7 @@ local function hide(obj)
 end
 function M.new(config,deps,ui)
     local round=0
+    local nextRoundAt=0
     local active=nil
     local lastPayload=nil
     local panel=nil
@@ -98,6 +101,7 @@ function M.new(config,deps,ui)
     local function paintPanel(w,c,ids)
         local cc=c.Pawn.CharacterCardSystemComponent
         local cl=StaticFindObject("/Game/Gameplay/UI/CardWidgets/BPW_MainPanel.BPW_MainPanel_C")
+        if not valid(cl)then local ok,o=pcall(LoadAsset,"/Game/Gameplay/UI/CardWidgets/BPW_MainPanel.BPW_MainPanel_C");if ok then cl=o end end
         local lib=StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary")
         if not valid(cl) or not valid(lib) then return false end
         panel=lib:Create(w,cl,c)
@@ -153,10 +157,10 @@ function M.new(config,deps,ui)
         for id,v in pairs(players)do
             if not v.p.bIsDead and valid(v.p.CharacterCardSystemComponent)then
                 connected[id]=v
-                if pending(v.p.CharacterCardSystemComponent)>0 then anyPending=true end
+                if pending(v.p.CharacterCardSystemComponent)>0 or v.p.CharacterCardSystemComponent:GetIsCardSelection() then anyPending=true end
             end
         end
-        if not active and anyPending then
+        if not active and anyPending and st:GetRealTimeSeconds(w)>=nextRoundAt then
             local n=0;for _ in pairs(connected)do n=n+1 end
             if n<2 then return end
             round=round+1
@@ -173,7 +177,7 @@ function M.new(config,deps,ui)
             elseif not v.done then
                 local n=pending(v.cc)
                 if not v.opened then
-                    if n==0 then v.cc:DebugOpenDraft() end
+                    if n==0 and not v.cc:GetIsCardSelection() then v.cc:DebugOpenDraft() end
                     v.opened=true
                     n=pending(v.cc);v.initial=n
                 end
@@ -181,7 +185,7 @@ function M.new(config,deps,ui)
                     v.ids=offer(v.cc)
                     if n>0 and (not v.initial or v.initial==0)then v.initial=n end
                 end
-                if v.ids and v.initial and n<v.initial then v.done=true end
+                if v.ids and v.initial and (n<v.initial or (v.initial==0 and not v.cc:GetIsCardSelection())) then v.done=true end
             end
         end
         for line in deps.read("party-choices.txt"):gmatch("[^\r\n]+")do
@@ -205,6 +209,7 @@ function M.new(config,deps,ui)
         for _,v in pairs(active.players)do total=total+1;if not v.done then remaining=remaining+1 end end
         if remaining==0 then
             active=nil
+            nextRoundAt=st:GetRealTimeSeconds(w)+0.5
             publish(epoch)
             if st:IsGamePaused(w) then st:SetGamePaused(w,false) end
             paused=false
@@ -216,7 +221,7 @@ function M.new(config,deps,ui)
             publish(epoch)
             local localDone=false
             for _,v in pairs(active.players)do if v.localPlayer and v.done then localDone=true end end
-            if localDone then ui.status("cards","Waiting for party ("..(total-remaining).."/"..total..")",w,st:GetPlayerController(w,0)) end
+            if localDone then ui.status("cards",L.t("Waiting for party").." ("..(total-remaining).."/"..total..")",w,st:GetPlayerController(w,0)) end
         end
     end
     local function guest(w,st,c,epoch)
@@ -231,7 +236,7 @@ function M.new(config,deps,ui)
         end
         if #ids==0 then
             clearPanel();localDraft=nil;sentIndex=nil
-            ui.status("cards","Waiting for party...",w,c)
+            ui.status("cards",L.t("Waiting for party..."),w,c)
             return
         end
         local token=epoch..":"..draft.round
@@ -244,7 +249,7 @@ function M.new(config,deps,ui)
                 deps.log("Party draft UI displayed "..token.." "..table.concat(ids,","))
             else
                 clearPanel();if not ok then deps.log("Card panel fallback: "..tostring(painted))end
-                local lines={"Choose your card:"}
+                local lines={L.t("Choose your card:")}
                 local cc=c.Pawn.CharacterCardSystemComponent
                 for i,cardId in ipairs(ids)do
                     local data=findConfig(cc,cardId)
@@ -259,18 +264,20 @@ function M.new(config,deps,ui)
             if now-lastSent>=1 or lastSent==0 then
                 if deps.send("party_choice|"..epoch.."|"..draft.round.."|"..id.."|"..sentIndex) then lastSent=now end
             end
-            ui.status("cards","Waiting for party...",w,c)
+            ui.status("cards",L.t("Waiting for party..."),w,c)
         end
     end
     return {
         tick=function(w,st,sys,state,players)
             if config.party_cards==false then return end
+            if not state.game_epoch or not state.lobby or not state.role then return end
             local epoch=tonumber(state.game_epoch) or 0
             if name(w)~=worldId or epoch~=lastEpoch then
                 clearPanel();ui.clear("cards");active=nil;round=0;localDraft=nil;sentIndex=nil;lastPayload=nil
-                worldId=name(w);lastEpoch=epoch;paused=false
+                worldId=name(w);lastEpoch=epoch;paused=false;nextRoundAt=0
             end
-            if epoch==0 or state.party_supported~="true" or state.session_stage~="run" or state.lobby=="0" then
+            if epoch>0 and state.lobby~="0" and not M.enabledStage(state.session_stage) then return end
+            if epoch==0 or state.lobby=="0" then
                 if paused and sys:IsServer(w) and st:IsGamePaused(w) then st:SetGamePaused(w,false) end
                 if active or localDraft or locked then clearPanel();ui.clear("cards");active=nil;localDraft=nil end
                 paused=false;return

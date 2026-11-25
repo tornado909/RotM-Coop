@@ -1,3 +1,4 @@
+package.path="mod/RotMCoop/Scripts/?.lua;"..package.path
 -- Verifies the native-game Play path does not deadlock a lobby in ready=0.
 package.preload["UEHelpers"] = function() return {} end
 local module = dofile("mod/RotMCoop/Scripts/steam_menu.lua")

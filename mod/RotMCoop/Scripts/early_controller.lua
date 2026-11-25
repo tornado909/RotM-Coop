@@ -48,7 +48,7 @@ end
 local enabled=function()return false end
 local M={set_enabled=function(fn)enabled=fn end}
 RegisterBeginPlayPreHook(function(actor_param)
-    if not enabled() then return end
+    if not actor_param or not enabled() then return end
     local ok, err = pcall(assign_unpossessed_controller, actor_param)
     if not ok then log("Early controller hook error: " .. tostring(err)) end
 end)

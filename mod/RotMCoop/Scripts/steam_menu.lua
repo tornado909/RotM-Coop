@@ -1,3 +1,4 @@
+local L=require("localization")
 -- Native UMG Steam matchmaking menu, using the game's existing button blueprint.
 -- Background bridge uses Steamworks AppID 480 for test matchmaking only.
 -- Gameplay network packets are transparently forwarded by Steam P2P / Valve relay.
@@ -240,8 +241,8 @@ local function refresh_friend_buttons()
             entry.friend = friends[friend_offset+n]
             if entry.friend then
                 local label = entry.friend.name
-                if entry.friend.online == 0 then label = label.." (не в сети)" end
-                set_text(entry.widget, "ПРИГЛАСИТЬ: "..label)
+                if entry.friend.online == 0 then label = label..L.t(" (offline)") end
+                set_text(entry.widget, L.t("INVITE: ")..label)
             end
             set_visible(entry.widget, invite_show and entry.friend ~= nil)
         end
@@ -262,18 +263,18 @@ local function refresh_friend_buttons()
             ui_open and not show and not guest_busy and entry.room ~= nil) end
     end
     if controls.host then
-        set_text(controls.host.widget, show and "НАЧАТЬ ИГРУ" or "СОЗДАТЬ ЛОББИ")
+        set_text(controls.host.widget, show and L.t("START GAME") or L.t("CREATE LOBBY"))
         set_visible(controls.host.widget, ui_open and not guest_busy and not invite_mode)
     end
     if controls.invites then
         set_text(controls.invites.widget,
-            invite_mode and "К УЧАСТНИКАМ" or "ПРИГЛАСИТЬ ДРУГА")
+            invite_mode and L.t("BACK TO PLAYERS") or L.t("INVITE FRIEND"))
         set_visible(controls.invites.widget, show)
     end
     if controls.back then
         set_text(controls.back.widget,
             (is_host_waiting() or current_state.role=="guest")
-            and not invite_mode and "ПОКИНУТЬ ЛОББИ" or "НАЗАД")
+            and not invite_mode and L.t("LEAVE LOBBY") or L.t("BACK"))
     end
 end
 
@@ -301,11 +302,11 @@ local function refresh_members()
     local people = read_members()
     local in_room = is_host_waiting() or current_state.role == "guest"
     local phase = current_state.session_stage or "lobby"
-    local names = { lobby="ЛОББИ", loading="ЗАГРУЗКА", hub="ХАБ", run="ЗАБЕГ" }
-    local stage = names[phase] or "ЛОББИ"
+    local names = { lobby=L.t("LOBBY"), loading=L.t("LOADING"), hub=L.t("HUB"), run=L.t("RUN") }
+    local stage = names[phase] or L.t("LOBBY")
     if controls.roster then
         set_text(controls.roster.widget,
-            "ИГРОКИ: " .. #people .. "/4 · " .. stage)
+            L.t("PLAYERS: ") .. #people .. "/4 · " .. stage)
         set_visible(controls.roster.widget, ui_open and in_room and not invite_mode)
     end
     for n=1,4 do
@@ -314,10 +315,10 @@ local function refresh_members()
             local person = people[n]
             entry.person = person
             if person then
-                local prefix = person.host and "ХОСТ: "
+                local prefix = person.host and L.t("HOST: ")
                     or (is_host_waiting() and not person.self_user
-                        and "ИСКЛЮЧИТЬ: " or "ИГРОК: ")
-                local state = person.phase=="playing" and " [В ИГРЕ]" or ""
+                        and L.t("KICK: ") or L.t("PLAYER: "))
+                local state = person.phase=="playing" and L.t(" [IN GAME]") or ""
                 set_text(entry.widget, prefix .. person.name .. state)
             end
             set_visible(entry.widget, ui_open and in_room and not invite_mode
@@ -377,7 +378,7 @@ local function handle_click(key)
         else
             friend_offset=0
             if send("create|p2p|RotM Coop") then
-                set_text(controls.host.widget, "СОЗДАЁМ STEAM-ЛОББИ...")
+                set_text(controls.host.widget, L.t("CREATING STEAM LOBBY..."))
             end
         end
     elseif key == "invites" then
@@ -391,7 +392,7 @@ local function handle_click(key)
         if is_host_waiting() and entry and entry.person
             and not entry.person.host and not entry.person.self_user then
             send("kick|" .. entry.person.id)
-            set_text(entry.widget, "ИСКЛЮЧЕНИЕ ИГРОКА...")
+            set_text(entry.widget, L.t("REMOVING PLAYER..."))
         end
     elseif key == "morefriends" then
         local friends=read_friends()
@@ -402,7 +403,7 @@ local function handle_click(key)
         local entry = controls[key]
         if entry and entry.friend then
             send("invite|"..entry.friend.id)
-            set_text(entry.widget, "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО")
+            set_text(entry.widget, L.t("INVITE SENT"))
         end
     elseif key == "refresh" then
         if current_state.role ~= "guest" and
@@ -414,7 +415,7 @@ local function handle_click(key)
         local rooms = read_lobbies()
         room_offset = room_offset + 4
         if room_offset >= #rooms then room_offset = 0 end
-        if controls.refresh then set_text(controls.refresh.widget, "ПОИСК ЛОББИ...") end
+        if controls.refresh then set_text(controls.refresh.widget, L.t("SEARCHING LOBBIES...")) end
     elseif key:find("^room") then
         local entry = controls[key]
         if current_state.role ~= "guest" and entry and entry.room then
@@ -422,7 +423,7 @@ local function handle_click(key)
             handled_lobby_id = nil
             patch_requested = false
             send("join|" .. active_lobby_id)
-            set_text(entry.widget, "ПОДКЛЮЧЕНИЕ...")
+            set_text(entry.widget, L.t("CONNECTING..."))
         end
     end
 end
@@ -462,23 +463,23 @@ local function update_menu()
         local item = box:GetChildAt(n)
         if valid(item) then base_widgets[#base_widgets + 1] = item end
     end
-    add_button(box, world, controller, "СЕТЕВАЯ ИГРА", "entry", true)
-    add_button(box, world, controller, "СОЗДАТЬ ЛОББИ", "host", false)
-    add_button(box, world, controller, "ИГРОКИ: 0/4", "roster", false)
+    add_button(box, world, controller, L.t("CO-OP"), "entry", true)
+    add_button(box, world, controller, L.t("CREATE LOBBY"), "host", false)
+    add_button(box, world, controller, L.t("PLAYERS: 0/4"), "roster", false)
     for n=1,4 do
-        add_button(box, world, controller, "ИГРОК #" .. n, "member" .. n, false)
+        add_button(box, world, controller, L.t("PLAYER #") .. n, "member" .. n, false)
     end
-    add_button(box, world, controller, "НАЙТИ ЛОББИ", "refresh", false)
+    add_button(box, world, controller, L.t("FIND LOBBY"), "refresh", false)
     for n = 1, 4 do
-        add_button(box, world, controller, "ЛОББИ #" .. n, "room" .. n, false)
+        add_button(box, world, controller, L.t("LOBBY #") .. n, "room" .. n, false)
     end
-    add_button(box, world, controller, "ЕЩЁ ЛОББИ", "morelobbies", false)
+    add_button(box, world, controller, L.t("MORE LOBBIES"), "morelobbies", false)
     for n = 1, 4 do
-        add_button(box, world, controller, "ДРУГ #" .. n, "friend" .. n, false)
+        add_button(box, world, controller, L.t("FRIEND #") .. n, "friend" .. n, false)
     end
-    add_button(box, world, controller, "ЕЩЁ ДРУЗЬЯ", "morefriends", false)
-    add_button(box, world, controller, "ПРИГЛАСИТЬ ДРУГА", "invites", false)
-    add_button(box, world, controller, "НАЗАД", "back", false)
+    add_button(box, world, controller, L.t("MORE FRIENDS"), "morefriends", false)
+    add_button(box, world, controller, L.t("INVITE FRIEND"), "invites", false)
+    add_button(box, world, controller, L.t("BACK"), "back", false)
     log("Steam Co-op integrated into native main menu")
 end
 
@@ -646,14 +647,14 @@ local function update_status()
                 if a.ready ~= b.ready then return a.ready > b.ready end
                 return a.title < b.title
             end)
-            set_text(controls.refresh.widget, "НАЙТИ ЛОББИ (" .. #rooms .. ")")
+            set_text(controls.refresh.widget, L.t("FIND LOBBY (") .. #rooms .. ")")
             for n=1,4 do
                 local info = controls["room"..n]
                 if info then
                     local room = rooms[room_offset+n]
                     info.room = room
                     if room then
-                        local stage = room.ready == "1" and "В ИГРЕ" or "В ЛОББИ"
+                        local stage = room.ready == "1" and L.t("IN GAME") or L.t("IN LOBBY")
                         set_text(info.widget, room.owner_name .. ": " ..
                             room.title .. " (" .. room.count .. "/" .. room.max .. ") " .. stage)
                     end
@@ -661,30 +662,30 @@ local function update_status()
                 end
             end
         elseif status == "searching" then
-            set_text(controls.refresh.widget, "ПОИСК ЛОББИ...")
+            set_text(controls.refresh.widget, L.t("SEARCHING LOBBIES..."))
         elseif status == "error" then
-            set_text(controls.refresh.widget, "ОШИБКА STEAM / ПОВТОРИТЬ")
+            set_text(controls.refresh.widget, L.t("STEAM ERROR / RETRY"))
         end
     end
     if controls.refresh and ui_open and
         (state.role == "guest" or status == "joining" or status == "kicked") then
         local messages = {
-            joining = "ВХОД В STEAM-ЛОББИ...",
-            waiting_host = "ОЖИДАНИЕ ЗАПУСКА ХОСТА...",
-            waiting_p2p = "ПРОВЕРКА STEAM P2P...",
-            joined = "ПОДГОТОВКА СЕТЕВОЙ ИГРЫ...",
-            patched = "ПОДГОТОВКА ПЕРСОНАЖА...",
-            connecting_game = "ВХОД В ИГРОВОЙ МИР...",
-            playing = "СОЕДИНЕНИЕ УСТАНОВЛЕНО",
-            host_offline = "ХОСТ НЕ ОТВЕЧАЕТ",
-            kicked = "ВАС ИСКЛЮЧИЛИ ИЗ ЛОББИ",
-            host_unavailable = "ХОСТ НЕ ГОТОВ",
-            game_no_response = "ИГРОВОЙ СЕРВЕР НЕ ОТВЕЧАЕТ",
-            game_login_timeout = "ОШИБКА ЗАГРУЗКИ ПЕРСОНАЖА",
-            disconnected = "СОЕДИНЕНИЕ ПОТЕРЯНО",
-            error = "ОШИБКА СЕТЕВОЙ ИГРЫ",
+            joining = L.t("JOINING STEAM LOBBY..."),
+            waiting_host = L.t("WAITING FOR HOST..."),
+            waiting_p2p = L.t("CHECKING STEAM P2P..."),
+            joined = L.t("PREPARING CO-OP..."),
+            patched = L.t("PREPARING CHARACTER..."),
+            connecting_game = L.t("ENTERING WORLD..."),
+            playing = L.t("CONNECTED"),
+            host_offline = L.t("HOST NOT RESPONDING"),
+            kicked = L.t("REMOVED FROM LOBBY"),
+            host_unavailable = L.t("HOST NOT READY"),
+            game_no_response = L.t("GAME SERVER NOT RESPONDING"),
+            game_login_timeout = L.t("CHARACTER LOAD ERROR"),
+            disconnected = L.t("CONNECTION LOST"),
+            error = L.t("CO-OP ERROR"),
         }
-        set_text(controls.refresh.widget, messages[status] or "ПОДКЛЮЧЕНИЕ...")
+        set_text(controls.refresh.widget, messages[status] or L.t("CONNECTING..."))
     end
     if status == "joined" and state.lobby and state.lobby == active_lobby_id
         and not patch_requested then
@@ -751,9 +752,15 @@ end
 function Module.is_party_active()
     return current_state.role=="host" or current_state.role=="guest"
 end
+local last_complete_state=nil
 function Module.get_state()
     if not io_dir then return current_state end
-    return read_kv(io_dir .. "\\state.txt")
+    local data=read_kv(io_dir .. "\\state.txt")
+    if data.ready=="1" and data.game_epoch and data.role and data.lobby and data.status then
+        last_complete_state=data
+        return data
+    end
+    return last_complete_state or current_state
 end
 
 function Module.mark_client_connecting()

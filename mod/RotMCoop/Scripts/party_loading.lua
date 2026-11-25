@@ -1,3 +1,4 @@
+local L=require("localization")
 -- Display the game's own loading widget throughout hard travel/reconnect.
 local H=require("UEHelpers")
 local M={}
@@ -50,7 +51,7 @@ function M.install(config,deps)
             end
             deps.log("Native party loading screen displayed: "..message)
         elseif not screen:IsInViewport() then screen:AddToViewport(9999) end
-        if valid(text) and last~=message then text:SetText(FText(message));last=message end
+        if valid(text) and last~=message then text:SetText(FText(L.t(message)));last=message end
     end
     local pending=false
     local errors={}

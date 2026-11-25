@@ -1,6 +1,8 @@
 local script_path = "mod/RotMCoop/Scripts/"
 package.path = script_path .. "?.lua;" .. package.path
 RegisterBeginPlayPreHook = function() end
+RegisterBeginPlayPostHook = function() end
+StaticFindObject = function() end
 local config = dofile(script_path .. "config.lua")
 config.steam_lobbies_enabled = false
 config.network_motion_tuning = false
@@ -54,7 +56,7 @@ package.loaded.config = config
 Key = { F5 = 5, F6 = 6, F7 = 7 }
 ModifierKey = { CONTROL = 1 }
 RegisterKeyBind = function(key, _, callback) keys[key] = callback end
-LoopAsync = function() return 1 end
+LoopInGameThreadWithDelay = function() return 1 end
 ExecuteInGameThread = function(callback) callback() end
 ExecuteInGameThreadWithDelay = function(delay, callback)
     scheduled[#scheduled + 1] = { delay = delay, callback = callback }

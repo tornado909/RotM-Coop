@@ -1,3 +1,4 @@
+local L=require("localization")
 -- Server-authoritative downed state. The verified native guard preserves GAS
 -- and the pawn when its HP reaches zero; only the whole-party wipe ends a run.
 local H=require("UEHelpers")
@@ -139,7 +140,7 @@ function M.new(config,deps,ui)
                 deps.log("Party local downed HP synchronized")
             end
             if client then maintainFreeze(p) end
-            ui.status("revive",string.format("Downed  |  Ally revive %.1f / 5 s",e.progress or 0),w,c)
+            ui.status("revive",string.format(L.t("Downed  |  Ally revive %.1f / 5 s"),e.progress or 0),w,c)
             return
         elseif client and localFrozen==name(p)then
             p.bIsDead=false
@@ -152,9 +153,9 @@ function M.new(config,deps,ui)
         local closest,dist=nil,nil
         for _,entry in pairs(snapshot)do local d=distance(pos,entry.loc);if not dist or d<dist then closest=entry;dist=d end end
         if closest and dist<=RADIUS then
-            ui.status("revive",string.format("Reviving ally  |  %.1f / 5 s",closest.progress or 0),w,c)
+            ui.status("revive",string.format(L.t("Reviving ally  |  %.1f / 5 s"),closest.progress or 0),w,c)
         elseif closest then
-            ui.status("revive",string.format("Ally down  |  %.0f m",dist/100),w,c)
+            ui.status("revive",string.format(L.t("Ally down  |  %.0f m"),dist/100),w,c)
         else ui.clear("revive")end
     end
     local function host(w,st,state,players,epoch,dt,paused)
@@ -250,7 +251,7 @@ function M.new(config,deps,ui)
                 local snapshot,phase=M.parse(deps.read("party-downed.txt"),epoch)
                 if phase=="wipe" then
                     clearEffects()
-                    ui.status("revive","Party defeated",w,st:GetPlayerController(w,0))
+                    ui.status("revive",L.t("Party defeated"),w,st:GetPlayerController(w,0))
                 elseif snapshot and state.party_guard=="true" then
                     showEffects(w,snapshot);display(w,st,st:GetPlayerController(w,0),snapshot,true)
                 end

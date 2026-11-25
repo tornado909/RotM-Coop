@@ -13,6 +13,10 @@ internal sealed class SteamP2PTunnel : IDisposable
 {
     private const int SteamChannel = 19;
     private const int ControlChannel = 20;
+    private const int VisualChannel = 21;
+    private const int CombatChannel = 22;
+    public Action<ulong, string>? VisualReceived { get; set; }
+    public Action<ulong, string>? CombatReceived { get; set; }
     private const int SteamUnreliable = 0;
     private const int SteamReliable = 2;
     private const int MaxDatagram = 65507;
@@ -24,6 +28,7 @@ internal sealed class SteamP2PTunnel : IDisposable
     private readonly byte[] steamBuffer = new byte[MaxDatagram];
     private readonly SteamReassembly reassembly = new();
     private readonly Dictionary<ulong, DateTime> controlPeers = new();
+    private readonly Dictionary<ulong, Queue<(byte[] Packet, DateTime Until)>> combatPending = new();
     private readonly Dictionary<ulong, DateTime> lastControlSent = new();
     private DateTime lastGuestProbe = DateTime.MinValue;
     private DateTime guestAckAt = DateTime.MinValue;
@@ -276,9 +281,111 @@ internal sealed class SteamP2PTunnel : IDisposable
         }
     }
 
+    // Cosmetic events use an independent channel. Never execute a remote
+    // gameplay ability from this data; the listen server remains authoritative.
+    public void BroadcastVisual(string payload)
+    {
+        if ((!Hosting && !Guest) || payload.Length > 1000) return;
+        byte[] data = System.Text.Encoding.ASCII.GetBytes(payload);
+        byte[] packet = new byte[12 + data.Length];
+        "RMV1"u8.CopyTo(packet);
+        BinaryPrimitives.WriteUInt64LittleEndian(packet.AsSpan(4), lobby);
+        data.CopyTo(packet, 12);
+        var peers = Hosting ? controlPeers.Keys.ToArray() : new[] { remoteHost };
+        int mode = payload.StartsWith("A|", StringComparison.Ordinal) ? SteamUnreliable : SteamReliable;
+        foreach (ulong peer in peers)
+            if (isAllowedPeer(peer))
+                SteamNative.SteamAPI_ISteamNetworking_SendP2PPacket(
+                    networking, peer, packet, (uint)packet.Length, mode, VisualChannel);
+    }
+
+    private void PumpVisual()
+    {
+        for (int i = 0; i < 64; i++)
+        {
+            if (!SteamNative.SteamAPI_ISteamNetworking_IsP2PPacketAvailable(
+                networking, out uint size, VisualChannel)) return;
+            if (!SteamNative.SteamAPI_ISteamNetworking_ReadP2PPacket(
+                networking, steamBuffer, (uint)steamBuffer.Length, out uint bytes, out ulong peer, VisualChannel)) return;
+            if ((!Hosting && (!Guest || peer != remoteHost)) || !isAllowedPeer(peer) || bytes < 13 || bytes > 1012 ||
+                !steamBuffer.AsSpan(0, 4).SequenceEqual("RMV1"u8) ||
+                BinaryPrimitives.ReadUInt64LittleEndian(steamBuffer.AsSpan(4)) != lobby) continue;
+            VisualReceived?.Invoke(peer, System.Text.Encoding.ASCII.GetString(steamBuffer, 12, (int)bytes - 12));
+        }
+    }
+
+    public bool IsCombatPeerVerified(ulong peer) =>
+        isAllowedPeer(peer) && (Hosting ? controlPeers.ContainsKey(peer) : P2PReady && peer == remoteHost);
+
+    public void SendCombat(string payload, bool reliable)
+    {
+        if ((!Hosting && !P2PReady) || payload.Length is < 1 or > 1000) return;
+        var peers = Hosting ? controlPeers.Keys.ToArray() : new[] { remoteHost };
+        byte[] packet = new byte[12 + payload.Length];
+        "RMC2"u8.CopyTo(packet);
+        BinaryPrimitives.WriteUInt64LittleEndian(packet.AsSpan(4), lobby);
+        System.Text.Encoding.ASCII.GetBytes(payload, packet.AsSpan(12));
+        foreach (ulong peer in peers)
+        {
+            if (!IsCombatPeerVerified(peer)) continue;
+            if (!reliable || !combatPending.ContainsKey(peer))
+            {
+                if (SendCombatPacket(peer, packet, reliable) || !reliable) continue;
+            }
+            if (!combatPending.TryGetValue(peer, out var pending))
+            {
+                pending = new();
+                combatPending.Add(peer, pending);
+            }
+            if (pending.Count == 256)
+            {
+                log("COMBAT_RELIABLE_QUEUE_FULL");
+                continue;
+            }
+            pending.Enqueue((packet, DateTime.UtcNow.AddSeconds(4)));
+        }
+    }
+
+    private bool SendCombatPacket(ulong peer, byte[] packet, bool reliable) =>
+        SteamNative.SteamAPI_ISteamNetworking_SendP2PPacket(networking, peer, packet, (uint)packet.Length,
+            reliable ? SteamReliable : SteamUnreliable, CombatChannel);
+
+    public void ClearCombat() => combatPending.Clear();
+
+    private void PumpCombat()
+    {
+        foreach (var (peer, pending) in combatPending.ToArray())
+        {
+            if (!IsCombatPeerVerified(peer))
+            {
+                combatPending.Remove(peer);
+                continue;
+            }
+            for (int i = 0; i < 16 && pending.TryPeek(out var item); ++i)
+            {
+                if (item.Until < DateTime.UtcNow) log("COMBAT_RELIABLE_SEND_TIMEOUT");
+                else if (!SendCombatPacket(peer, item.Packet, true)) break;
+                pending.Dequeue();
+            }
+            if (pending.Count == 0) combatPending.Remove(peer);
+        }
+        for (int i = 0; i < 96; ++i)
+        {
+            if (!SteamNative.SteamAPI_ISteamNetworking_IsP2PPacketAvailable(networking, out _, CombatChannel) ||
+                !SteamNative.SteamAPI_ISteamNetworking_ReadP2PPacket(networking, steamBuffer,
+                    (uint)steamBuffer.Length, out uint bytes, out ulong peer, CombatChannel)) return;
+            if (bytes is < 13 or > 1012 || !IsCombatPeerVerified(peer) ||
+                !steamBuffer.AsSpan(0, 4).SequenceEqual("RMC2"u8) ||
+                BinaryPrimitives.ReadUInt64LittleEndian(steamBuffer.AsSpan(4)) != lobby) continue;
+            CombatReceived?.Invoke(peer, System.Text.Encoding.ASCII.GetString(steamBuffer, 12, (int)bytes - 12));
+        }
+    }
+
     private void PumpSteamPackets()
     {
         PumpControl();
+        PumpCombat();
+        PumpVisual();
         for (int n = 0; n < 256; ++n)
         {
             if (!SteamNative.SteamAPI_ISteamNetworking_IsP2PPacketAvailable(networking,
@@ -478,6 +585,7 @@ internal sealed class SteamP2PTunnel : IDisposable
         bulkQueue.Clear();
         reassembly.Clear();
         controlPeers.Clear();
+        ClearCombat();
         lastControlSent.Clear();
         guestAckAt = DateTime.MinValue;
         lastGuestProbe = DateTime.MinValue;

@@ -41,16 +41,17 @@ function Module.install(config, deps)
                             if server then
                                 target = {
                                     {mage, "MinNetUpdateFrequency", 30.0},
-                                    {movement, "NetworkMinTimeBetweenClientAckGoodMoves", 0.05},
-                                    {movement, "NetworkMinTimeBetweenClientAdjustments", 0.05},
+                                    {mage, "NetUpdateFrequency", 60.0},
+                                    {movement, "NetworkMinTimeBetweenClientAckGoodMoves", 0.033},
+                                    {movement, "NetworkMinTimeBetweenClientAdjustments", 0.033},
                                     {movement, "NetworkMinTimeBetweenClientAdjustmentsLargeCorrection", 0.03},
                                 }
                             else
                                 target = {
-                                    {movement, "NetworkSimulatedSmoothLocationTime", 0.05},
+                                    {movement, "NetworkSimulatedSmoothLocationTime", 0.033},
                                     {movement, "NetworkSimulatedSmoothRotationTime", 0.03},
-                                    {movement, "NetworkMaxSmoothUpdateDistance", 128.0},
-                                    {movement, "NetworkNoSmoothUpdateDistance", 192.0},
+                                    {movement, "NetworkMaxSmoothUpdateDistance", 256.0},
+                                    {movement, "NetworkNoSmoothUpdateDistance", 512.0},
                                 }
                             end
                             local changed, rejected = 0, {}

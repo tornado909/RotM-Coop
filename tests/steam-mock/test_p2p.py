@@ -44,6 +44,52 @@ def command(name,cmd):
     assert not p.exists(),p
     p.write_text(cmd,encoding="utf-8")
 
+def combat_rows(name):
+    path = ROOT / name / "ipc" / "party-combat.txt"
+    return path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+
+def wait_combat(name, match):
+    until = time.monotonic() + 3
+    while time.monotonic() < until:
+        rows = combat_rows(name)
+        if match(rows):
+            return rows
+        time.sleep(.02)
+    raise AssertionError(f"{name} combat snapshot: {combat_rows(name)}")
+
+def check_combat_transport(guest_id):
+    press = "I|1|1|1|P|10|20|30|75|5|7|50|60|70"
+    release = "I|1|2|1|R|10|20|30|-80|10|8"
+    aim = "M|1|3|10|20|30|-80|10|8"
+    stale_aim = "M|1|2|11|21|31|0|0|0"
+    cast = "X|1|101|501|601"
+    start = cast + "|1|B|/Game/FX/NS_Test.NS_Test|10|20|30|75|5|7|1|1|1|2500|Size:f:4"
+    update = cast + "|2|U|40|50|60|-80|15|7|2|2|2|Size:f:6"
+    end = cast + "|3|E"
+    command("host", "party_combat|" + press)
+    command("guest", "party_combat|" + start)
+    command("guest", "party_combat|" + press)
+    command("guest", "party_combat|" + release)
+    command("guest", "party_combat|" + aim)
+    command("guest", "party_combat|" + stale_aim)
+    command("guest", "party_combat|" + press)
+    command("guest", "party_combat|" + press.replace("I|1|1", "I|2|10"))
+    command("guest", "party_combat|M|1|4|NaN|20|30|0|0|0")
+    rows = wait_combat("host", lambda rows: aim + "|" + guest_id in rows)
+    assert rows == [f"{row}|{guest_id}" for row in (press, release, aim)], rows
+    assert not combat_rows("guest")
+
+    command("host", "party_combat|" + start)
+    command("host", "party_combat|" + update)
+    wait_combat("guest", lambda rows: rows == [start, update])
+    command("host", "party_combat|" + end)
+    wait_combat("guest", lambda rows: rows == [start, end])
+    command("host", "party_combat|" + start)
+    command("host", "party_combat|" + update.replace("|2|U|", "|4|U|"))
+    time.sleep(.15)
+    assert combat_rows("guest") == [start, end]
+    print("COMBAT_AUTHORITY_INPUT_ORDER_AIM_AND_EFFECT_LIFECYCLE_PASS", flush=True)
+
 def main():
     for name,num in [("host","1"),("guest","2")]:
         d=ROOT/name
@@ -141,6 +187,7 @@ def main():
     command("guest", "game_ready")
     playing=wait_state("guest", "playing")
     assert playing["client_game_ready"]=="true"
+    check_combat_transport(rows[1].split("\t", 1)[0])
     command("guest", "list")
     wait_state("guest", "playing")
     command("guest", "join|"+str(ROOM))
@@ -167,6 +214,9 @@ def main():
         if h.get("game_epoch")=="2" and g.get("game_epoch")=="2" and g.get("remote_ready")=="true":break
         time.sleep(.15)
     assert h.get("game_epoch")=="2" and g.get("game_epoch")=="2",(h,g)
+    wait_combat("guest", lambda rows: not rows)
+    wait_combat("host", lambda rows: not rows)
+    print("COMBAT_IPC_CLEARED_AT_TRAVEL_PASS", flush=True)
     new_game=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
     new_game.bind(("127.0.0.1",0));new_game.settimeout(8)
     try:

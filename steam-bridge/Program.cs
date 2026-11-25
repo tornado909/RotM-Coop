@@ -11,6 +11,7 @@ namespace RotMSteamBridge;
 internal sealed class Bridge : IDisposable
 {
     private const string LobbyTag = "rotm-coop-2026-test";
+    private const string TransportVersion = "steam-p2p-v2";
     private readonly IntPtr matchmaking;
     private readonly IntPtr friends;
     private readonly ulong localSteamId;
@@ -37,6 +38,16 @@ internal sealed class Bridge : IDisposable
     private readonly List<string> choices = new();
     private string partyDrafts = "";
     private string partyDowned = "";
+    private string partyVisuals = "";
+    private readonly Queue<string> castEvents = new();
+    private bool castDirty;
+    private string ammoSnapshot = "";
+    private uint ammoEpoch, ammoSequence;
+    private bool ammoDirty;
+    private DateTime lastAmmoWrite = DateTime.MinValue;
+    private DateTime lastCastWrite = DateTime.MinValue;
+    private readonly CombatEvents combat = new();
+    private DateTime lastCombatWrite = DateTime.MinValue;
     private NativeGuards.PartyHandle? partyGuard;
     private DateTime lastRosterRefresh = DateTime.MinValue;
     private string hostStage = "lobby";
@@ -82,6 +93,8 @@ internal sealed class Bridge : IDisposable
         if (friends == IntPtr.Zero || localSteamId == 0)
             throw new InvalidOperationException("Steam friends/user interface is unavailable");
         tunnel = new SteamP2PTunnel(IsAllowedPeer, message => Console.WriteLine(message));
+        tunnel.VisualReceived = ReceiveVisual;
+        tunnel.CombatReceived = ReceiveCombat;
         SteamNative.SteamAPI_ManualDispatch_Init();
         pipe = SteamNative.SteamAPI_GetHSteamPipe();
         if (pipe == 0) throw new InvalidOperationException("No Steam API pipe.");
@@ -89,6 +102,8 @@ internal sealed class Bridge : IDisposable
         if (ipc != null)
         {
             Directory.CreateDirectory(ipc);
+            AtomicWrite(Path.Combine(ipc, "party-casts.txt"), "");
+            AtomicWrite(Path.Combine(ipc, "party-ammo.txt"), "");
             WriteStatus();
         }
     }
@@ -140,6 +155,7 @@ internal sealed class Bridge : IDisposable
     private void WriteStatus()
     {
         if (ipc == null) return;
+        lastStatus = DateTime.UtcNow;
         string[] lines =
         [
             "ready\t1",
@@ -193,6 +209,7 @@ internal sealed class Bridge : IDisposable
             AtomicWrite(Path.Combine(ipc, "profiles.txt"), string.Join("\n", profiles) + "\n");
             AtomicWrite(Path.Combine(ipc, "party-cards.txt"), partyDrafts);
             AtomicWrite(Path.Combine(ipc, "party-downed.txt"), partyDowned);
+            AtomicWrite(Path.Combine(ipc, "party-visuals.txt"), partyVisuals);
             AtomicWrite(Path.Combine(ipc, "party-choices.txt"), string.Join("\n", choices) + "\n");
             lastStatus = DateTime.UtcNow;
         }
@@ -208,19 +225,7 @@ internal sealed class Bridge : IDisposable
     {
         string temp = target + "." + Environment.ProcessId + ".new";
         File.WriteAllText(temp, contents, new UTF8Encoding(false));
-        for (int attempt = 0; attempt < 15; attempt++)
-        {
-            try
-            {
-                File.Move(temp, target, overwrite: true);
-                return;
-            }
-            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) &&
-                                        attempt < 14)
-            {
-                Thread.Sleep(8 + attempt * 3);
-            }
-        }
+        File.Move(temp, target, overwrite: true);
     }
 
     private bool IsAllowedPeer(ulong peer)
@@ -242,11 +247,12 @@ internal sealed class Bridge : IDisposable
         profiles.Clear();
         choices.Clear();
         ulong activeLobby = lobby != 0 ? lobby : joinedLobby;
-        if (activeLobby == 0) { partyDrafts = ""; partyDowned = ""; return; }
+        if (activeLobby == 0) { partyDrafts = ""; partyDowned = ""; partyVisuals = ""; return; }
         if (joinedLobby != 0 && lobby == 0)
         {
             partyDrafts = ReadPartyLobby(activeLobby, "rotm_cards_v2");
             partyDowned = ReadPartyLobby(activeLobby, "rotm_downed_v2");
+            partyVisuals = ReadPartyLobby(activeLobby, "rotm_visuals_v1");
         }
         ulong owner = SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyOwner(matchmaking, activeLobby);
         int count = Math.Clamp(
@@ -414,7 +420,7 @@ internal sealed class Bridge : IDisposable
         if (owner != 0 && owner == localSteamId) return;
         string tag = SteamNative.Utf8(SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyData(matchmaking, id, "rotm"));
         string transport = SteamNative.Utf8(SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyData(matchmaking, id, "transport"));
-        if (tag != LobbyTag || transport != "steam-p2p-v1") return;
+        if (tag != LobbyTag || transport != TransportVersion) return;
         string name = SteamNative.Utf8(SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyData(matchmaking, id, "name"));
         int players = SteamNative.SteamAPI_ISteamMatchmaking_GetNumLobbyMembers(matchmaking, id);
         string ownerName = Safe(SteamNative.Utf8(
@@ -464,7 +470,7 @@ internal sealed class Bridge : IDisposable
         pendingEndpoint = ""; // No external game endpoint is ever advertised.
         pendingTitle = Safe(title);
         gameHostReady = false;
-        gameEpoch = 0;
+        SetGameEpoch(0);
         pending = SteamNative.SteamAPI_ISteamMatchmaking_CreateLobby(matchmaking, privateForSmoke ? 0 : 2, 4);
         pendingCallback = 513;
         if (pending == 0) SetStatus("error", "Steam CreateLobby failed to start.");
@@ -561,9 +567,13 @@ internal sealed class Bridge : IDisposable
             SteamNative.SteamAPI_ISteamMatchmaking_LeaveLobby(matchmaking, joinedLobby);
         lobby = 0;
         joinedLobby = 0;
+        SetGameEpoch(0);
+        castEvents.Clear();
+        ammoSnapshot=""; ammoEpoch=ammoSequence=0; ammoDirty=true;
+        castDirty = true;
         members.Clear();
         profiles.Clear();
-        choices.Clear(); partyDrafts = ""; partyDowned = "";
+        choices.Clear(); partyDrafts = ""; partyDowned = ""; partyVisuals = "";
         try { partyGuard?.SetActive(false); } catch { }
         kickedMembers.Clear();
         hostStage = "lobby";
@@ -611,7 +621,8 @@ internal sealed class Bridge : IDisposable
                     lobby = createdId;
                     created = true;
                     bool tag = SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(matchmaking, lobby, "rotm", LobbyTag);
-                    bool transport = SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(matchmaking, lobby, "transport", "steam-p2p-v1");
+                    bool transport = SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(
+                        matchmaking, lobby, "transport", TransportVersion);
                     bool name = SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(matchmaking, lobby, "name", pendingTitle);
                     SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(matchmaking, lobby, "host_id", localSteamId.ToString());
                     SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(matchmaking, lobby, "host_name",
@@ -668,7 +679,7 @@ internal sealed class Bridge : IDisposable
                     }
                     string transport = SteamNative.Utf8(SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyData(
                         matchmaking, id, "transport"));
-                    if (transport != "steam-p2p-v1")
+                    if (transport != TransportVersion)
                     {
                         Leave();
                         SetStatus("error", "This lobby uses an unsupported game transport.");
@@ -804,6 +815,123 @@ internal sealed class Bridge : IDisposable
                 && x.EndsWith("_C", StringComparison.Ordinal) && x.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'));
     }
 
+    private bool ValidVisual(string payload)
+    {
+        var p = payload.Split('|');
+        return p.Length == 8 && ValidEpoch(p[0], gameEpoch)
+            && int.TryParse(p[1], out int id) && id > 0
+            && uint.TryParse(p[2], out uint sequence) && sequence > 0
+            && int.TryParse(p[3], out int slot) && slot is >= 1 and <= 4
+            && int.TryParse(p[4], out int robe) && robe is >= 1 and <= 6
+            && p[5].Length is >= 5 and <= 80 && p[5].StartsWith("GA_", StringComparison.Ordinal)
+            && p[5].EndsWith("_C", StringComparison.Ordinal)
+            && p[5].All(c => char.IsAsciiLetterOrDigit(c) || c == '_')
+            && int.TryParse(p[6], out int yaw) && yaw is >= -360 and <= 360
+            && int.TryParse(p[7], out int pitch) && pitch is >= -90 and <= 90;
+    }
+
+    private bool ValidAmmo(string payload, out uint epoch, out uint sequence)
+    {
+        epoch=sequence=0;
+        var p=payload.Split('|');
+        if(p.Length!=4 || p[0]!="A" || !uint.TryParse(p[1],out epoch) ||
+            epoch!=gameEpoch || epoch==0 || !uint.TryParse(p[2],out sequence) || sequence==0) return false;
+        var rows=p[3].Split(';');
+        if(rows.Length is <1 or >4) return false;
+        var ids=new HashSet<int>();
+        foreach(var row in rows)
+        {
+            var v=row.Split(':');
+            if((v.Length!=3 && v.Length!=7) || !int.TryParse(v[0],out int id) || id<=0 || !ids.Add(id) ||
+                !int.TryParse(v[1],out int count) || !int.TryParse(v[2],out int max) ||
+                max is <1 or >100000 || count<0 || count>max) return false;
+            if(v.Length==7)
+            {
+                if(!int.TryParse(v[3],out int slot) || !uint.TryParse(v[4],out uint token) ||
+                   !int.TryParse(v[5],out int position) || !int.TryParse(v[6],out int rate)) return false;
+                if(slot==0)
+                {
+                    if(token!=0 || position!=0 || rate!=0) return false;
+                }
+                else if(slot is not (1 or 8) || token==0 || position is <0 or >600000 ||
+                        rate is <1 or >10000) return false;
+            }
+        }
+        return true;
+    }
+
+    private void ReceiveVisual(ulong peer, string payload)
+    {
+        if (ipc == null) return;
+        if(payload.StartsWith("A|",StringComparison.Ordinal))
+        {
+            // The P2P tunnel admits only the current host on the guest side.
+            if(!tunnel.Guest || !ValidAmmo(payload,out uint e,out uint seq) ||
+                (e==ammoEpoch && seq<=ammoSequence)) return;
+            ammoEpoch=e;ammoSequence=seq;ammoSnapshot=payload;ammoDirty=true;
+            return;
+        }
+        if (tunnel.Hosting || !ValidVisual(payload)) return;
+        castEvents.Enqueue(payload);
+        while (castEvents.Count > 48) castEvents.Dequeue();
+        castDirty = true;
+    }
+    private void FlushAmmo()
+    {
+        DateTime now = DateTime.UtcNow;
+        if (!ammoDirty || ipc == null || now - lastAmmoWrite < TimeSpan.FromMilliseconds(40)) return;
+        lastAmmoWrite = now;
+        try
+        {
+            AtomicWrite(Path.Combine(ipc, "party-ammo.txt"), ammoSnapshot);
+            ammoDirty = false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    private void FlushVisualEvents()
+    {
+        if (!castDirty || ipc == null || DateTime.UtcNow - lastCastWrite < TimeSpan.FromMilliseconds(20)) return;
+        lastCastWrite = DateTime.UtcNow;
+        try { AtomicWrite(Path.Combine(ipc, "party-casts.txt"), string.Join("\n", castEvents)); castDirty = false; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    private void ReceiveCombat(ulong peer, string payload)
+    {
+        if (ipc == null || !CombatEvents.TryParse(payload, gameEpoch, out var message)) return;
+        if (message.FromGuest ? tunnel.Hosting && gameHostReady : tunnel.Guest && remoteHostReady)
+            combat.Receive(peer, message, DateTime.UtcNow);
+    }
+
+    private void ClearCombat()
+    {
+        combat.Clear();
+        tunnel.ClearCombat();
+    }
+
+    private void SetGameEpoch(uint epoch)
+    {
+        if (epoch == gameEpoch) return;
+        gameEpoch = epoch;
+        ClearCombat();
+    }
+
+    private void FlushCombat()
+    {
+        DateTime now = DateTime.UtcNow;
+        if (ipc == null || now - lastCombatWrite < TimeSpan.FromMilliseconds(20)) return;
+        lastCombatWrite = now;
+        combat.Expire(now, tunnel.IsCombatPeerVerified);
+        if (!combat.Dirty) return;
+        try
+        {
+            AtomicWrite(Path.Combine(ipc, "party-combat.txt"), combat.Snapshot());
+            combat.MarkFlushed();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
     private void ProcessCommand(string text)
     {
         if (text.Length > 2300) { SetStatus("error", "Lobby command too long."); return; }
@@ -843,6 +971,29 @@ internal sealed class Bridge : IDisposable
                         RefreshRoster(); WriteStatus();
                     }
                     break;
+                case "party_ammo":
+                    if(tunnel.Hosting && parts.Length==4)
+                    {
+                        string snapshot="A|"+string.Join("|",parts.Skip(1));
+                        if(ValidAmmo(snapshot,out _,out _)) tunnel.BroadcastVisual(snapshot);
+                    }
+                    break;
+                case "party_cast":
+                    if (lobby != 0 && parts.Length == 9)
+                    {
+                        string visual = string.Join("|", parts.Skip(1));
+                        if (ValidVisual(visual)) tunnel.BroadcastVisual(visual);
+                    }
+                    break;
+                case "party_combat":
+                    int commandLength = "party_combat|".Length;
+                    if (text.Length <= commandLength ||
+                        !CombatEvents.TryParse(text[commandLength..], gameEpoch, out var message)) break;
+                    if (message.FromGuest
+                        ? tunnel.Guest && remoteHostReady && guestHasPossessedPawn
+                        : tunnel.Hosting && gameHostReady)
+                        tunnel.SendCombat(message.Text, message.Reliable);
+                    break;
                 case "party_guard":
                     if (parts.Length == 2 && partyGuard != null)
                         partyGuard.SetActive(parts[1] == "1" && (lobby != 0 || joinedLobby != 0) && members.Count >= 2);
@@ -850,15 +1001,17 @@ internal sealed class Bridge : IDisposable
                     break;
                 case "party_cards":
                 case "party_downed":
+                case "party_visuals":
                     if (lobby != 0 && parts.Length >= 3 && ValidEpoch(parts[1], gameEpoch))
                     {
                         string payload = string.Join("|", parts.Skip(1));
                         if (!ValidPartyPayload(payload)) break;
                         bool cards = parts[0] == "party_cards";
+                        bool visuals = parts[0] == "party_visuals";
                         if (SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(matchmaking, lobby,
-                            cards ? "rotm_cards_v2" : "rotm_downed_v2", payload))
+                            visuals ? "rotm_visuals_v1" : cards ? "rotm_cards_v2" : "rotm_downed_v2", payload))
                         {
-                            if (cards) partyDrafts = payload; else partyDowned = payload;
+                            if (visuals) partyVisuals = payload; else if (cards) partyDrafts = payload; else partyDowned = payload;
                             WriteStatus();
                         }
                     }
@@ -908,7 +1061,7 @@ internal sealed class Bridge : IDisposable
                             matchmaking, lobby, "ready", "1");
                         if (gameHostReady)
                         {
-                            gameEpoch = next;
+                            SetGameEpoch(next);
                             hostUdpMisses = 0;
                             lastHostUdpHealthAt = DateTime.UtcNow;
                         }
@@ -920,6 +1073,7 @@ internal sealed class Bridge : IDisposable
                     if (lobby != 0)
                     {
                         gameHostReady = false;
+                        ClearCombat();
                         hostStage = "loading";
                         SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(
                             matchmaking, lobby, "stage", hostStage);
@@ -961,6 +1115,7 @@ internal sealed class Bridge : IDisposable
                     if (joinedLobby != 0 && tunnel.Guest)
                     {
                         guestHasPossessedPawn = false;
+                        ClearCombat();
                         SetMemberPhase("lobby");
                         SetStatus("disconnected", "Connection to the host game was lost.");
                     }
@@ -977,10 +1132,14 @@ internal sealed class Bridge : IDisposable
         if (createSmoke) Create("p2p", "RotM private smoke test", true);
         DateTime until = DateTime.UtcNow.AddSeconds(createSmoke ? 26 : 3600 * 8);
         DateTime started = DateTime.UtcNow;
+        DateTime lastInputPoll = DateTime.MinValue;
         while (running && DateTime.UtcNow < until)
         {
             Pump();
             tunnel.Tick();
+            FlushVisualEvents();
+            FlushAmmo();
+            FlushCombat();
             if (gameHostReady && tunnel.Hosting && watchedGameProcess != null &&
                 !watchedGameProcess.HasExited &&
                 DateTime.UtcNow - lastHostUdpHealthAt > TimeSpan.FromSeconds(0.5))
@@ -993,6 +1152,7 @@ internal sealed class Bridge : IDisposable
                     {
                         hostUdpMisses = 0;
                         gameHostReady = false;
+                        ClearCombat();
                         SteamNative.SteamAPI_ISteamMatchmaking_SetLobbyData(matchmaking, lobby, "ready", "0");
                         SetStatus("hosting", "Unreal listen socket disappeared; waiting for next map.");
                     }
@@ -1031,7 +1191,7 @@ internal sealed class Bridge : IDisposable
                 Console.WriteLine("GAME_EXIT_DETECTED: Steam lobby and P2P closing immediately");
                 break;
             }
-            if (ipc != null) PollInput();
+            if (ipc != null && DateTime.UtcNow - lastInputPoll >= TimeSpan.FromMilliseconds(20)) { lastInputPoll = DateTime.UtcNow; PollInput(); }
             if (queuedInvitationLobby != 0 && pending == 0)
             {
                 ulong invitedLobby = queuedInvitationLobby;
@@ -1055,12 +1215,13 @@ internal sealed class Bridge : IDisposable
                 SteamNative.SteamAPI_ISteamMatchmaking_RequestLobbyData(matchmaking, joinedLobby);
                 string ready = SteamNative.Utf8(
                     SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyData(matchmaking, joinedLobby, "ready"));
+                if (remoteHostReady && ready == "0") ClearCombat();
                 remoteHostReady = ready == "1";
                 remoteStage = SteamNative.Utf8(
                     SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyData(matchmaking, joinedLobby, "stage"));
                 string epochText = SteamNative.Utf8(
                     SteamNative.SteamAPI_ISteamMatchmaking_GetLobbyData(matchmaking, joinedLobby, "epoch"));
-                if (uint.TryParse(epochText, out uint parsedEpoch)) gameEpoch = parsedEpoch;
+                if (uint.TryParse(epochText, out uint parsedEpoch) && parsedEpoch > gameEpoch) SetGameEpoch(parsedEpoch);
                 if (status is "waiting_host" or "waiting_p2p")
                 {
                     if (remoteHostReady && tunnel.P2PReady) SetStatus("joined");
@@ -1080,7 +1241,7 @@ internal sealed class Bridge : IDisposable
                     DateTime.UtcNow - File.GetLastWriteTimeUtc(heartbeat) > TimeSpan.FromSeconds(45))
                     break;
             }
-            Thread.Sleep(75);
+            Thread.Sleep(5);
         }
         return createSmoke ? 2 : 0;
     }

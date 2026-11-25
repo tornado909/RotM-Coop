@@ -1,3 +1,4 @@
+package.path="mod/RotMCoop/Scripts/?.lua;"..package.path
 package.preload["UEHelpers"] = function() return {} end
 local m = dofile("mod/RotMCoop/Scripts/steam_menu.lua")
 local check = m.should_follow_host_epoch

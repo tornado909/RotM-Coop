@@ -1,7 +1,10 @@
+package.path="mod/RotMCoop/Scripts/?.lua;"..package.path
 package.preload.UEHelpers=function()return {}end
 local path="mod/RotMCoop/Scripts/"
 local cards=dofile(path.."party_cards.lua")
 local revive=dofile(path.."party_revive.lua")
+assert(cards.enabledStage("hub") and cards.enabledStage("run"))
+assert(not cards.enabledStage("lobby") and not cards.enabledStage("loading"))
 local x=cards.parse("12|3|258:Ice,Fire,Water;257:-",12)
 assert(x.round==3 and #x.players["258"]==3 and #x.players["257"]==0)
 assert(not cards.parse("11|3|258:Ice,Fire,Water",12))

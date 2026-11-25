@@ -63,11 +63,18 @@ $Components = @(
     @{ From='Runtime\RotMCoop\Scripts\guest_spawn.lua'; To='ue4ss\Mods\RotMCoop\Scripts\guest_spawn.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_loadout.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_loadout.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_identity.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_identity.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\party_combat.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_combat.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\party_montage.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_montage.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_gate.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_gate.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_loading.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_loading.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_cards.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_cards.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_revive.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_revive.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\party_gameplay.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_gameplay.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\party_visuals.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_visuals.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\party_hud.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_hud.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\party_fx.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_fx.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\party_ammo.lua'; To='ue4ss\Mods\RotMCoop\Scripts\party_ammo.lua'; Loader=$false },
+    @{ From='Runtime\RotMCoop\Scripts\localization.lua'; To='ue4ss\Mods\RotMCoop\Scripts\localization.lua'; Loader=$false },
     @{ From='Runtime\RotMCoop\Scripts\config.lua'; To='ue4ss\Mods\RotMCoop\Scripts\config.lua'; Loader=$false },
     @{ From='RotMSteamBridge.exe'; To='ue4ss\Mods\RotMCoop\Scripts\RotMSteamBridge.exe'; Loader=$false }
 )
