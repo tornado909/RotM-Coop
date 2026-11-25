@@ -4,7 +4,7 @@
 
 **Explore the arenas together. Build your own mage. Revive your allies.**
 
-[Download v0.5.9](https://github.com/tornado909/RotM-Coop/releases/tag/v0.5.9) · [Installation](#installation) · [How to play](#how-to-play) · [Русский](README.ru.md)
+[Download v0.6.0](https://github.com/tornado909/RotM-Coop/releases/tag/v0.6.0) · [Installation](#installation) · [How to play](#how-to-play) · [Русский](README.ru.md)
 
 Windows x64 · Steam 1.0.0.301 · Experimental release
 
@@ -30,7 +30,7 @@ Two-player sessions have been tested. Four-player gameplay, every spell type and
 **Requirements:** Windows 64-bit, a running Steam client, and game build **1.0.0.301**. All players must use the same mod version.
 
 1. Close the game.
-2. Download [RotMCoop-Win64-0.5.9-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.5.9/RotMCoop-Win64-0.5.9-test.zip) and extract it.
+2. Download [RotMCoop-Win64-0.6.0-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.0/RotMCoop-Win64-0.6.0-test.zip) and extract it.
 3. Run `Install-RotMCoop.cmd` from the extracted folder.
 4. Select the game directory containing the `RevengeOfTheMage` folder.
 5. Launch the game normally through Steam.
