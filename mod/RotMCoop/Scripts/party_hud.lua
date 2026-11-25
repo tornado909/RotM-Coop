@@ -270,8 +270,15 @@ local function paintSpell(parts, spell, icon, elapsed)
     local charges = lookup(parts.CurrentStackText)
     if valid(charges) then
         local count = spell and spell.charges
-        if count then text(charges, tostring(count)) end
-        charges:SetVisibility(count and NONINTERACTIVE or 1)
+        if parts.combined then
+            local label=count and tostring(count) or ""
+            if remain>0 then label=label..(label~="" and " / " or "")..tostring(math.ceil(remain)).."s" end
+            text(charges,label)
+            charges:SetVisibility(label~="" and NONINTERACTIVE or 1)
+        else
+            if count then text(charges,tostring(count)) end
+            charges:SetVisibility(count and NONINTERACTIVE or 1)
+        end
     end
     for _, key in ipairs(KEY_FIELDS) do
         local hint = lookup(parts[key])
@@ -393,16 +400,61 @@ function M.new(config, deps)
         slot:SetPadding({Left = COLUMN_SPACING / 2, Top = 0, Right = COLUMN_SPACING / 2, Bottom = 0})
         slot:SetVerticalAlignment(2)
     end
-    local function clone(lib, world, pc, template)
-        if not valid(template) then return end
-        local widget = lib:Create(world, template:GetClass(), pc)
-        if valid(widget) then
-            widget:SetVisibility(NONINTERACTIVE)
-            return widget
+    -- Native gameplay UserWidgets can register delegates against their
+    -- owning controller on Construct. Build inert UMG children instead.
+    -- Only copy appearance from native widgets, never their Blueprint class.
+    local function styledText(tree, source, size)
+        local label=construct(tree,"TextBlock","AllyValue")
+        if valid(source) then
+            pcall(function()
+                label:SetFont(source.Font)
+                label:SetColorAndOpacity(source.ColorAndOpacity)
+                label:SetShadowOffset(source.ShadowOffset)
+                label:SetShadowColorAndOpacity(source.ShadowColorAndOpacity)
+            end)
         end
+        pcall(function() local font=label.Font;font.Size=size;label:SetFont(font) end)
+        return label
+    end
+    local function createBar(tree,template)
+        local root=construct(tree,"VerticalBox","AllyBar")
+        local stock=contents(template)
+        local native=Stock.child(stock,"ProgressBar")
+        local source=Stock.child(stock,"TextBlockValue") or Stock.child(stock,"TextBlockValueMin")
+        local value=styledText(tree,source,15)
+        local progress=construct(tree,"ProgressBar","AllyProgress")
+        if valid(native) then
+            pcall(function()progress.WidgetStyle=native.WidgetStyle end)
+            pcall(function()progress:SetFillColorAndOpacity(native.FillColorAndOpacity)end)
+        end
+        root:AddChildToVerticalBox(value)
+        local box=construct(tree,"SizeBox","AllyProgressSize")
+        box:SetHeightOverride(12);box:SetContent(progress)
+        root:AddChildToVerticalBox(box)
+        return root,{root=objectPath(root),ProgressBar=objectPath(progress),TextBlockValue=objectPath(value)}
+    end
+    local function createSpellStrip(tree,spellPanel)
+        local strip=construct(tree,"HorizontalBox","AllySpells")
+        local paths={}
+        for i,name in ipairs(Stock.slots)do
+            local native=valid(spellPanel) and spellPanel[name]
+            local stock=contents(native)
+            local source=Stock.child(stock,"CurrentStackText")
+            local cell=construct(tree,"VerticalBox","AllySpell")
+            local icon=construct(tree,"Image","AllyIcon")
+            local nativeIcon=Stock.child(stock,"ForegroundImage")
+            if valid(nativeIcon) then pcall(function()icon.Brush=nativeIcon.Brush end)end
+            local size=construct(tree,"SizeBox","AllyIconSize")
+            size:SetWidthOverride(27);size:SetHeightOverride(27);size:SetContent(icon)
+            cell:AddChildToVerticalBox(size)
+            local label=styledText(tree,source,12)
+            cell:AddChildToVerticalBox(label)
+            strip:AddChildToHorizontalBox(cell)
+            paths[i]={ForegroundImage=objectPath(icon),CurrentStackText=objectPath(label),combined=true}
+        end
+        return strip,paths
     end
     local function createRow(world, pc, tree, templates, spellPanel)
-        local lib = StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary")
         local row = construct(tree, "HorizontalBox", "AllyRow")
         local components = {labels = {}, bars = {}, spells = {}}
         local labels = construct(tree, "VerticalBox", "AllyLabels")
@@ -425,24 +477,15 @@ function M.new(config, deps)
             components.labels[i] = objectPath(label)
         end
         addCell(tree, row, labels, LABEL_WIDTH, false)
-        for i = 1, #NATIVE_BARS do
-            local widget = clone(lib, world, pc, templates[i])
-            if valid(widget) then
-                addCell(tree, row, widget, BAR_WIDTH, true)
-                components.bars[i] = componentPaths(widget, BAR_FIELDS)
-            end
+        for i=1,#NATIVE_BARS do
+            local widget,parts=createBar(tree,templates[i])
+            addCell(tree,row,widget,BAR_WIDTH,false)
+            components.bars[i]=parts
         end
-        -- Slot widgets require the native panel's Blueprint template, which
-        -- initializes their per-slot GAS attributes before native construction.
-        local spells = clone(lib, world, pc, spellPanel)
-        if valid(spells) then
-            addCell(tree, row, spells, SPELL_WIDTH, true)
-            components.panel = objectPath(spells)
-            for i, name in ipairs(Stock.slots) do
-                local control = spells[name]
-                if valid(control) then components.spells[i] = componentPaths(control, SPELL_FIELDS) end
-            end
-        end
+        local spells,parts=createSpellStrip(tree,spellPanel)
+        addCell(tree,row,spells,SPELL_WIDTH,true)
+        components.panel=objectPath(spells)
+        components.spells=parts
         return row, components
     end
     local function update(world, pc, hud, snapshot, epoch, elapsed)

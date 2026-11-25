@@ -31,6 +31,43 @@ function M.complete(players)
     for _,v in pairs(players)do count=count+1;if not v.done then return false end end
     return count>0
 end
+-- Build 1.0.0.301: the stock draft opener sets the UI-close latch at
+-- +0x29a. CardSelect clears the selection flags at +0x298/299 but
+-- only the native UI-close callback clears +0x29a. The remote player
+-- deliberately has no host-side UMG widget, so that callback cannot run.
+-- The exact executable is already checked by the installer/native bridge.
+local draftLatchRegistered=false
+function M.registerDraftLatch()
+    if draftLatchRegistered then return true end
+    if not RegisterCustomProperty or not PropertyTypes then return false end
+    local ok=pcall(RegisterCustomProperty,{
+        Name="RotMRemoteDraftClosing",
+        Type=PropertyTypes.ByteProperty,
+        BelongsToClass="/Script/RevengeOfTheMage.RM_CharacterCardSystemComponent",
+        OffsetInternal=0x29a
+    })
+    draftLatchRegistered=ok
+    return ok
+end
+function M.chooseRemote(cc,index)
+    local before=cc:GetPendingCardSelections()
+    if before<1 or not cc:GetIsCardSelection() then return false end
+    -- Complete the missing remote UI-close handshake BEFORE CardSelect
+    -- re-enters the native pending-draft scheduler. Never change the queue.
+    local latch
+    if M.registerDraftLatch() then
+        latch=cc.RotMRemoteDraftClosing
+        if latch~=0 and latch~=1 then return false end
+        cc.RotMRemoteDraftClosing=0
+    end
+    cc:CardSelect(index)
+    local applied=cc:GetPendingCardSelections()<before
+    if not applied and latch~=nil and cc:GetIsCardSelection() then
+        cc.RotMRemoteDraftClosing=latch
+    end
+    return applied
+end
+
 local function offer(cc)
     if not valid(cc) or not cc:GetIsCardSelection() then return nil end
     local a=cc.CurrentSelectableCards
@@ -217,9 +254,7 @@ function M.new(config,deps,ui)
                 and not v.done and v.ids and v.ids[i] and offer(cc) then
                 local actual=offer(cc)
                 if actual and actual[i]==v.ids[i] then
-                    local before=pending(cc)
-                    cc:CardSelect(i-1)
-                    if pending(cc)<before then
+                    if M.chooseRemote(cc,i-1) then
                         v.done=true
                         deps.log("Party card applied to player "..id..": "..v.ids[i])
                     end
@@ -240,10 +275,15 @@ function M.new(config,deps,ui)
             if st:IsGamePaused(w) then st:SetGamePaused(w,false) end
             paused=false
             publish(epoch,now)
-            if now-active.started>=8 then
-                deps.log("Party card round "..round.." aborted: missing native offers")
-                active=nil;nextRoundAt=now+2
-                publish(epoch,now);ui.clear("cards")
+            if now-active.started>=8 and not active.warned then
+                active.warned=true
+                deps.log("Party card round "..round.." awaiting native offers; preserving pending selections")
+                for id,v in pairs(active.players)do
+                    if not v.done and not v.ids and connected[id] then
+                        local cc=connected[id].p.CharacterCardSystemComponent
+                        deps.log("Party card pending player="..id.." pending="..pending(cc).." selecting="..tostring(cc:GetIsCardSelection()).." cards="..#cc.CurrentSelectableCards)
+                    end
+                end
             end
             return
         end

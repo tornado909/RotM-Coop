@@ -10,7 +10,7 @@ Windows x64 · Steam game build 1.0.0.301 · Experimental pre-release
 
 </div>
 
-> **0.6.2 test candidate:** card draft, input and HUD regression fixes; real gameplay verification pending. Host reconnect crash remains under investigation.
+> **Known regressions in 0.6.2:** repeated card drafts, stuck primary attacks, duplicate host HUD and guest enemy death presentation. Main contains a native draft-close fix verified in three consecutive rounds across two local game instances; primary release and HUD changes still need graphical gameplay verification. Enemy death and host reconnect remain open. No replacement release yet.
 
 
 RotMCoop adds online co-op to [Revenge of the Mage](https://store.steampowered.com/app/2287150/Revenge_of_the_Mage/). Create an in-game Steam lobby, invite friends and play with separate characters and spell loadouts. Steam P2P handles the connection; manual IP entry, port forwarding and VPN are not required for the Steam mode.

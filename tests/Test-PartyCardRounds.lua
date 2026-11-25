@@ -2,6 +2,8 @@ package.path="mod/RotMCoop/Scripts/?.lua;"..package.path
 package.preload.UEHelpers=function()return {}end
 RegisterHook=function()end
 RegisterKeyBind=function()end
+PropertyTypes={ByteProperty=1}
+RegisterCustomProperty=function(p) assert(p.OffsetInternal==0x29a) end
 local cards=require("party_cards")
 local function obj(name,fields)
     fields=fields or {}
@@ -24,6 +26,8 @@ local function cc(id)
     function c:GetPendingCardSelections()return self.n end
     function c:GetIsCardSelection()return self.selecting end
     function c:offer()
+        assert((self.RotMRemoteDraftClosing or 0)==0,"previous draft latch not cleared")
+        self.RotMRemoteDraftClosing=1
         self.n=1;self.selecting=true
         self.CurrentSelectableCards={{CardId={ToString=function()return "Card"..id end}}}
     end
@@ -33,6 +37,7 @@ local function cc(id)
     end
     function c:CardSelect(i)
         assert(i==0 and self.selecting)
+        if id=="Guest" then assert(self.RotMRemoteDraftClosing==0) else self.RotMRemoteDraftClosing=0 end
         self.n=0;self.selecting=false;self.CurrentSelectableCards={}
     end
     return c
@@ -56,7 +61,7 @@ local function step(dt)
  for _,c in ipairs({h,g})do if c.readyAt and now>=c.readyAt and not paused then c.readyAt=nil;c:offer()end end
  m.tick(world,st,sys,state,players)
 end
-for round=1,2 do
+for round=1,3 do
  h:offer();step(1)
  assert(not paused,"must not pause while guest offers are pending")
  local first=assert(cards.parse(published,1))
@@ -71,4 +76,4 @@ for round=1,2 do
  assert(not paused,"round must resume after both players choose")
  assert(g.n==0 and published=="1|"..round.."|-")
 end
-print("TWO CONSECUTIVE CARD ROUNDS AND DELAYED OFFERS OK")
+print("THREE CONSECUTIVE CARD ROUNDS AND DRAFT LATCH OK")

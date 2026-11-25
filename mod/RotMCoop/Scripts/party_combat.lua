@@ -70,7 +70,11 @@ function M.decodeInput(line, epoch) return decode(line, epoch, "I") end
 function M.recordInput(state, input, now)
     local previous = state[input.slot]
     if previous and input.seq <= previous.seq then return false end
-    state[input.slot] = {seq=input.seq, down=input.down, at=now, releaseApplied=previous and previous.down==input.down and previous.releaseApplied or nil}
+    local sameEdge=previous and previous.down==input.down
+    state[input.slot] = {seq=input.seq, down=input.down, at=now,
+        changedAt=sameEdge and previous.changedAt or now,
+        releaseApplied=sameEdge and previous.releaseApplied or nil,
+        releasedAt=sameEdge and previous.releasedAt or nil}
     return true
 end
 
@@ -134,6 +138,41 @@ local function primaryMouse(controller)
     end)
     if ok and type(value)=="boolean" then return value end
 end
+
+-- The reflected native ReleaseInputID can leave a ServerOnly primary
+-- instance active after its GAS input flag has already gone false.
+-- Stop only that actor's still-running primary, after a grace period.
+function M.releaseOverdue(entry,now,blocked)
+    return entry and (blocked or not entry.down or now-entry.at>2)
+        and entry.releasedAt and now-entry.releasedAt>=0.35
+end
+local function cancelReleasedPrimary(actor)
+    local asc=actor.asc
+    local specs=asc.ActivatableAbilities.Items
+    local cancelled=0
+    for i=1,#specs do
+        local spec=specs[i]
+        if spec.InputID==1 and spec.ActiveCount>0 and valid(spec.Ability)
+            and spec.Ability.NetExecutionPolicy==3 then
+            local candidates={}
+            for _,list in ipairs({spec.NonReplicatedInstances,spec.ReplicatedInstances}) do
+                for j=1,#list do
+                    local instance=list[j]
+                    if valid(instance) and same(instance:GetAvatarActorFromActorInfo(),actor.pawn) then
+                        candidates[#candidates+1]=instance
+                    end
+                end
+            end
+            -- Snapshot the instance list before native cancellation mutates GAS.
+            for _,instance in ipairs(candidates)do
+                if valid(instance) then instance:K2_CancelAbility();cancelled=cancelled+1 end
+            end
+            break
+        end
+    end
+    return cancelled
+end
+M.cancelReleasedPrimary=cancelReleasedPrimary
 
 local function applyAim(actor, aim)
     local pawn, controller = actor.pawn, actor.controller
@@ -316,10 +355,20 @@ function M.install(config, deps)
                 -- A ServerOnly spec can report false while its native ability
                 -- still waits for release. Deliver each release edge once,
                 -- then reconcile any still-pressed spec on subsequent ticks.
+                if not entry.releasedAt then entry.releasedAt=now end
                 if native[slot] or not entry.releaseApplied then
                     actor.asc:ReleaseInputID(slot)
                     entry.releaseApplied=true
                 end
+                if slot==1 and M.releaseOverdue(entry,now,blocked) and not actor.pawn.bIsDead then
+                    local count=cancelReleasedPrimary(actor)
+                    if count>0 then
+                        deps.log("Party primary release recovery player="..actor.id.." instances="..count)
+                        entry.releasedAt=now
+                    end
+                end
+            else
+                entry.releasedAt=nil
             end
         end
     end

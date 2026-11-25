@@ -299,7 +299,7 @@ function M.install(config,deps)
         lastSnapshot,lastSnapshotTime,previousSnapshot=nil,nil,nil
         castPawns={};castActive={};castRoles={};castEpoch=0;lastRemoteSeq=0;castHost=false;castReadAt=nil
     end
-    local function syncVitals(pc,hud,host)
+    local function syncVitals(pc,hud)
         local p=pc.Pawn
         if not valid(p) or not valid(p.AbilitySystemComponent)then return end
         local list=p.AbilitySystemComponent.SpawnedAttributes
@@ -322,7 +322,6 @@ function M.install(config,deps)
             local max=StockHUD.child(tree.RootWidget,"TextBlockValueMax")
             local split=valid(min) and valid(max)
             if split and valid(combined) then combined:SetVisibility(1) end
-            if host then return end
             local function visit(o)
                 if not valid(o)then return end
                 local n=o:GetFName():ToString()
@@ -362,7 +361,7 @@ function M.install(config,deps)
         local pc=st:GetPlayerController(w,0)
         if not valid(pc) or not valid(pc.Pawn)then allyHud.clear();return end
         local stockHud=StockHUD.local_hud(st,w,pc)
-        safe("local HUD",function()syncVitals(pc,stockHud,sys:IsServer(w))end)
+        if not sys:IsServer(w) then safe("local HUD",function()syncVitals(pc,stockHud)end) end
         local now=st:GetRealTimeSeconds(w)
         local gameTime=st:GetTimeSeconds(w)
         if worldReadyAt==0 then worldReadyAt=now end

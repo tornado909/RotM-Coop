@@ -1276,6 +1276,13 @@ internal static class Program
                 NativeGuards.Apply(int.Parse(args[1]), args[2]);
                 return 0;
             }
+            // Isolated LAN regression harness: same native UI suppression
+            // as Steam lobby entry, with party death interception disabled.
+            if (args.Length == 3 && args[0] == "--qa-party-guard")
+            {
+                NativeGuards.InstallParty(int.Parse(args[1]), args[2]);
+                return 0;
+            }
             bool smoke = args.Contains("--smoke-create");
             string? ipc = args.Length >= 2 && args[0] == "--serve" ? args[1] : null;
             using var bridge = new Bridge(ipc, smoke);

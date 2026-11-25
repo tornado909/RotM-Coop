@@ -1,6 +1,7 @@
 """Isolated two-process LAN/loopback diagnostic for Revenge of the Mage Co-op."""
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -34,7 +35,7 @@ def verify_game(game_root):
     return binary
 
 
-def prepare_client(game_bin, evidence, role, port, guest_candidate=None, guest_start_hub=False, host_candidate=None, steam_ui_smoke=False, steam_menu_only=False):
+def prepare_client(game_bin, evidence, role, port, guest_candidate=None, guest_start_hub=False, host_candidate=None, steam_ui_smoke=False, steam_menu_only=False, headless=False):
     root = evidence / role
     profile = root / "profile"
     loader = root / "ue4ss"
@@ -56,12 +57,12 @@ def prepare_client(game_bin, evidence, role, port, guest_candidate=None, guest_s
     if role == "join" and guest_candidate:
         guest_mod = mods / "RotMGuestQA" / "Scripts"
         guest_mod.mkdir(parents=True)
-        shutil.copyfile(guest_candidate, guest_mod / "main.lua")
+        (guest_mod / "main.lua").write_text("package.path=" + json.dumps((mods / "RotMCoop" / "Scripts" / "?.lua").as_posix() + ";", ensure_ascii=False) + "..package.path\n" + guest_candidate.read_text(encoding="utf-8"), encoding="utf-8")
         order.insert(0, "RotMGuestQA : 1")
     if role == "host" and host_candidate:
         host_mod = mods / "RotMHostQA" / "Scripts"
         host_mod.mkdir(parents=True)
-        shutil.copyfile(host_candidate, host_mod / "main.lua")
+        (host_mod / "main.lua").write_text("package.path=" + json.dumps((mods / "RotMCoop" / "Scripts" / "?.lua").as_posix() + ";", ensure_ascii=False) + "..package.path\n" + host_candidate.read_text(encoding="utf-8"), encoding="utf-8")
         order.insert(0, "RotMHostQA : 1")
     if role == "join" and steam_ui_smoke:
         publish = ROOT / "lab" / "steam-bridge-publish"
@@ -87,7 +88,7 @@ def prepare_client(game_bin, evidence, role, port, guest_candidate=None, guest_s
 
     command = [
         str(game_bin / EXE),
-        "-nosteam", "-dx11", "-windowed", "-ResX=640", "-ResY=480",
+        "-nosteam", *(["-nullrhi", "-nosound"] if headless else ["-dx11", "-windowed", "-ResX=640", "-ResY=480"]),
         "-NoSplash", "-Multiprocess", "-unattended", "-nocrashreports", "-log",
         f"-port={port}", "--ue4ss-path", str(loader / "UE4SS.dll"),
     ]
@@ -131,6 +132,8 @@ def main():
     parser.add_argument("--steam-ui-smoke", action="store_true", help="Enable Steam AppID 480 UMG and bridge in isolated guest")
     parser.add_argument("--steam-menu-only", action="store_true", help="Do not automatically join when running Steam UMG smoke")
     parser.add_argument("--skip-host", action="store_true", help="Only launch the isolated guest for UI host-lobby smoke tests")
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--host-native-guard", type=Path, help="Install production party UI guard on isolated host for native draft regression")
     args = parser.parse_args()
     if not (1024 <= args.port <= 65535 and 40 <= args.timeout <= 110):
         parser.error("Port must be 1024-65535 and timeout 40-110 seconds")
@@ -146,14 +149,16 @@ def main():
 
         host = None
         if not args.skip_host:
-            host, roots["host"] = prepare_client(game_bin, evidence, "host", args.port, host_candidate=args.host_candidate)
+            host, roots["host"] = prepare_client(game_bin, evidence, "host", args.port, host_candidate=args.host_candidate, headless=args.headless)
             processes.append(host)
             print(f"Host PID: {host.pid}", flush=True)
             time.sleep(10)
             if host.poll() is not None:
                 raise RuntimeError(f"Host exited before guest startup: {host.returncode}")
+            if args.host_native_guard:
+                subprocess.run([str(args.host_native_guard.resolve(strict=True)), "--qa-party-guard", str(host.pid), str(exe)], check=True, timeout=18)
 
-        guest, roots["join"] = prepare_client(game_bin, evidence, "join", args.port, args.guest_candidate, args.guest_start_hub, steam_ui_smoke=args.steam_ui_smoke, steam_menu_only=args.steam_menu_only)
+        guest, roots["join"] = prepare_client(game_bin, evidence, "join", args.port, args.guest_candidate, args.guest_start_hub, steam_ui_smoke=args.steam_ui_smoke, steam_menu_only=args.steam_menu_only, headless=args.headless)
         processes.append(guest)
         print(f"Guest PID: {guest.pid}", flush=True)
         if args.guest_native_launcher:
