@@ -1,0 +1,27 @@
+package.preload.UEHelpers=function()return {}end
+local path="mod/RotMCoop/Scripts/"
+local cards=dofile(path.."party_cards.lua")
+local revive=dofile(path.."party_revive.lua")
+local x=cards.parse("12|3|258:Ice,Fire,Water;257:-",12)
+assert(x.round==3 and #x.players["258"]==3 and #x.players["257"]==0)
+assert(not cards.parse("11|3|258:Ice,Fire,Water",12))
+assert(not cards.parse("12|3|258:Ice;258:Fire",12))
+assert(not cards.parse("12|3|258:Ice,Fire,Water,Extra",12))
+assert(not cards.complete({a={done=true},b={done=false}}))
+assert(cards.complete({a={done=true},b={done=true}}))
+local d=revive.parse("12|258:1.0:-2.0:100.0:4.50",12)
+assert(d["258"].progress==4.5 and d["258"].loc.Y==-2)
+assert(not revive.parse("12|258:1:2:3:5.1",12))
+assert(not revive.parse("11|258:1:2:3:1",12))
+local e={progress=0}
+assert(not revive.advance(e,"friend",0.5,false))
+for i=1,9 do assert(not revive.advance(e,"friend",0.5,false))end
+assert(e.progress==4.5)
+assert(not revive.advance(e,"friend",0.5,true))
+assert(e.progress==4.5)
+assert(revive.advance(e,"friend",0.5,false))
+assert(not revive.advance(e,nil,0.2,false) and e.progress==0)
+assert(not revive.advance(e,"other",0.5,false))
+local gone,phase=revive.parse("12|wipe",12)
+assert(gone==nil and phase=="wipe")
+print("PARTY CARD AND REVIVE RULES OK")
