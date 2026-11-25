@@ -35,3 +35,9 @@ assert(not m.matchLanding(candidates,candidates.a.asset,pos,1.1))
 candidates.b.claimed=true
 assert(m.matchLanding(candidates,candidates.a.asset,pos,1.1)==candidates.a)
 print("PARTY LANDING CORRELATION OK")
+
+local q=m.predict({X=1,Y=2,Z=3},"RotMVel:v:1000,-100,50",0.5)
+assert(q.X==101 and q.Y==-8 and q.Z==8)
+assert(m.predict({X=1,Y=2,Z=3},"RotMVel:v:999999,0,0",0.1).X==1)
+assert(m.predict({X=1,Y=2,Z=3},nil,0.1).X==1)
+print("Projectile interpolation bounds passed")

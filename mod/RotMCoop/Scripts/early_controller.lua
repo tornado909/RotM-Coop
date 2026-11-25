@@ -22,6 +22,8 @@ local function assign_unpossessed_controller(actor_param)
     if not valid(actor) or not actor:IsA(mage_class) or valid(actor.Controller) then
         return
     end
+    -- A simulated replica must never claim the client's unpossessed local controller.
+    if actor:GetLocalRole() ~= 3 then return end
     local world = actor:GetWorld()
     if not valid(world) then return end
 

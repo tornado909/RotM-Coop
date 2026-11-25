@@ -146,6 +146,14 @@ local function setParameters(component, encoded)
     end
 end
 
+function M.predict(pos,encoded,age)
+    if not encoded then return pos end
+    local x,y,z=encoded:match("RotMVel:v:([^,;]+),([^,;]+),([^,;]+)")
+    x,y,z=number(x,30000),number(y,30000),number(z,30000)
+    if not x or not y or not z then return pos end
+    local t=math.max(0,math.min(age,0.10))
+    return {X=pos.X+x*t,Y=pos.Y+y*t,Z=pos.Z+z*t}
+end
 local function lerp(a, b, t) return a + (b-a)*t end
 local function vector(a, b, t)
     return {X=lerp(a.X,b.X,t), Y=lerp(a.Y,b.Y,t), Z=lerp(a.Z,b.Z,t)}
@@ -160,7 +168,7 @@ function M.install(config, deps)
     local session, onServer, epoch, nextCast, nextEffect = nil, false, 0, 0, 0
     local actors, casts, components, scopes, authored, remote, copies, parameters = {}, {}, {}, {}, {}, {}, {}, {}
     local landings, newComponents = {}, {}
-    local now, lastTick = 0, 0
+    local now, lastTick, lastRead = 0, 0, -1
     local logged = {}
 
     local function guarded(fn, ...)
@@ -184,7 +192,7 @@ function M.install(config, deps)
         session, onServer, epoch = key, host, newEpoch
         actors, casts, components, scopes, authored, remote, copies, parameters = {}, {}, {}, {}, {}, {}, {}, {}
         landings, newComponents = {}, {}
-        lastTick = 0
+        lastTick, lastRead = 0, -1
     end
 
     local function newCast(owner, serverOnly)
@@ -207,14 +215,14 @@ function M.install(config, deps)
         return instance.NetExecutionPolicy==3
     end
 
-    local function serverOnlyProjectile(actor, owner)
+    local function projectileSpec(actor, owner)
         local specs=owner.asc.ActivatableAbilities.Items
         local cls=path(actor:GetClass())
         for i=1,#specs do
             local spec=specs[i]
-            if valid(spec.Ability) and spec.Ability.NetExecutionPolicy==3 then
+            if valid(spec.Ability) then
                 local projectile=spec.Ability.ProjectileClass
-                if valid(projectile) and path(projectile)==cls then return true end
+                if valid(projectile) and path(projectile)==cls then return spec end
             end
         end
         return false
@@ -227,9 +235,13 @@ function M.install(config, deps)
         return deps.send(payload)
     end
 
-    local function packedParameters(p, cast)
+    local function packedParameters(p, cast, velocity)
         local encoded, size = {}, 0
         if cast.serverOnly then encoded[1]="RotMOwn:b:1";size=11 end
+        if velocity then
+            local value=string.format("RotMVel:v:%.1f,%.1f,%.1f",velocity.X,velocity.Y,velocity.Z)
+            encoded[#encoded+1]=value;size=size+#value+1
+        end
         for name, value in pairs(parameters[p] or {}) do
             local item = name .. ":" .. value
             size = size + #item + 1
@@ -240,7 +252,7 @@ function M.install(config, deps)
         return #encoded > 0 and "|" .. table.concat(encoded, ";") or ""
     end
 
-    local function component(c, cast, live, lifetime)
+    local function component(c, cast, live, lifetime, velocity)
         if not valid(c) or not c:IsA("/Script/Niagara.NiagaraComponent") or not c:IsActive() then return end
         local asset = path(c.Asset)
         local p = path(c)
@@ -258,7 +270,7 @@ function M.install(config, deps)
         end
         live[p] = true
         local tx = packTransform(c)
-        local params = packedParameters(p, cast)
+        local params = packedParameters(p, cast, velocity)
         local update = tx .. params
         if not fx.state then
             local ms = math.floor(math.min(600, math.max(0, lifetime or 0)) * 1000)
@@ -278,8 +290,13 @@ function M.install(config, deps)
             else
                 local children = actor:K2_GetComponentsByClass(niagara)
                 local lifetime = actor:GetLifeSpan()
+                local velocity
+                if cast.projectile then
+                    local v=actor:GetVelocity()
+                    if number(v.X,30000)and number(v.Y,30000)and number(v.Z,30000)then velocity=xyz(v)end
+                end
                 for _, value in ipairs(children) do
-                    component(value:get(), cast, live, lifetime)
+                    component(value:get(), cast, live, lifetime,velocity)
                 end
             end
         end
@@ -364,7 +381,12 @@ function M.install(config, deps)
         local p = owner and path(actor)
         if p and not actors[p] then
             local scope = scopes[#scopes]
-            actors[p] = scope and scope.cast and scope.cast.player == owner.id and scope.cast or newCast(owner, serverOnlyProjectile(actor, owner))
+            local spec=projectileSpec(actor,owner)
+            local cast=scope and scope.cast and scope.cast.player==owner.id and scope.cast
+                or newCast(owner,spec and spec.Ability.NetExecutionPolicy==3)
+            -- Actor ownership can share an ability cast, but projectile motion
+            -- is an actor-specific property.
+            actors[p]={id=cast.id,player=cast.player,serverOnly=cast.serverOnly,projectile=spec~=nil}
         end
     end
 
@@ -420,6 +442,8 @@ function M.install(config, deps)
     end
 
     local function render(world, localId, delta)
+        if now-lastRead>=0.032 then
+        lastRead=now
         for line in deps.read("party-combat.txt"):gmatch("[^\r\n]+") do
             local event = M.decode(line, epoch)
             local old=event and remote[event.key]
@@ -436,6 +460,7 @@ function M.install(config, deps)
                 end
             end
         end
+        end
         local blend = 1 - math.exp(-delta*28)
         for key, effect in pairs(remote) do
             if not effect.ended then
@@ -450,7 +475,7 @@ function M.install(config, deps)
                         retire(copy)
                         copy.path = nil
                     else
-                        copy.pos = vector(copy.pos, effect.pos, blend)
+                        copy.pos = vector(copy.pos, M.predict(effect.pos,effect.parameters,now-effect.at), blend)
                         copy.rot = rotation(copy.rot, effect.rot, blend)
                         copy.scale = vector(copy.scale, effect.scale, blend)
                         if copy.parameters ~= effect.parameters then
@@ -473,6 +498,7 @@ function M.install(config, deps)
         if not world then return end
         local stat = H.GetGameplayStatics()
         now = stat:GetRealTimeSeconds(world)
+        if host and now-lastTick<0.032 then return end
         local delta = math.min(0.25, math.max(0, now - lastTick))
         lastTick = now
         if host then
@@ -536,7 +562,7 @@ function M.install(config, deps)
             end)
         end
     end
-    deps.every(32, function() guarded(tick) end)
+    deps.every(16, function() guarded(tick) end)
 end
 
 return M

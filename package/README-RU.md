@@ -4,13 +4,13 @@
 
 **Сетевой кооператив для Revenge of the Mage**
 
-[Скачать v0.6.4](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.4/RotMCoop-Win64-0.6.4-test.zip) · [Релизы](https://github.com/tornado909/RotM-Coop/releases) · [English](https://github.com/tornado909/RotM-Coop/blob/main/README.md)
+[Скачать v0.6.5](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.5/RotMCoop-Win64-0.6.5-test.zip) · [Релизы](https://github.com/tornado909/RotM-Coop/releases) · [English](https://github.com/tornado909/RotM-Coop/blob/main/README.md)
 
 Windows x64 · Steam-версия игры 1.0.0.301 · Экспериментальная сборка
 
 </div>
 
-> **0.6.4 test candidate:** Test candidate: actual Steam P2P between two independent PCs verified. Three consecutive card rounds, one native HUD, input release and five-second revival verified. Enemy snapshots retain dormant mappings; both delayed death messages received in a headless Steam retest. Rendered enemy death, raw camera input, headless host draft and full playthrough still require validation.
+> **0.6.5 (тестовая сборка):** На двух изолированных экземплярах игры проверены направление переноса через ворота, однократная катсцена у каждого игрока и отключение дубликата манекена. Обновлены восстановление камеры и интерполяция снарядов. Полный забег через Steam и плавность эффектов ещё не проверены.
 
 
 RotMCoop добавляет сетевой кооператив в [Revenge of the Mage](https://store.steampowered.com/app/2287150/Revenge_of_the_Mage/). Создавайте лобби Steam, приглашайте друзей и играйте отдельными персонажами со своими заклинаниями. Подключение через Steam P2P не требует ручного ввода IP, проброса портов или VPN.
@@ -42,11 +42,11 @@ RotMCoop добавляет сетевой кооператив в [Revenge of t
 Требования: Windows x64, запущенный Steam и точная версия игры **1.0.0.301**. У всех участников должна быть одинаковая версия мода.
 
 1. Закройте игру.
-2. Скачайте и распакуйте [RotMCoop-Win64-0.6.4-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.4/RotMCoop-Win64-0.6.4-test.zip).
+2. Скачайте и распакуйте [RotMCoop-Win64-0.6.5-test.zip](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.5/RotMCoop-Win64-0.6.5-test.zip).
 3. Запустите `Install-RotMCoop.cmd` и выберите корневую папку игры, содержащую каталог `RevengeOfTheMage`.
 4. Запустите игру обычным способом через Steam.
 
-Установщик проверяет хеш EXE, сохраняет резервные копии заменяемых файлов, настройки мода и посторонние моды UE4SS. При несовместимом загрузчике установка по умолчанию останавливается. Отдельный лаунчер не нужен. [Контрольные суммы SHA-256](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.4/SHA256SUMS.txt).
+Установщик проверяет хеш EXE, сохраняет резервные копии заменяемых файлов, настройки мода и посторонние моды UE4SS. При несовместимом загрузчике установка по умолчанию останавливается. Отдельный лаунчер не нужен. [Контрольные суммы SHA-256](https://github.com/tornado909/RotM-Coop/releases/download/v0.6.5/SHA256SUMS.txt).
 
 ## Как играть
 

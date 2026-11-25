@@ -18,6 +18,11 @@ function M.message(state,world,possessed,engaged)
     end
     return nil
 end
+-- Local camera recovery only after a cinematic has ended. Never change
+-- a remote pawn's viewport or fight a playing sequence.
+function M.cameraRecovery(localOwned,dead,playing,paused,cursor,viewMatches)
+    return localOwned and not dead and not playing and not paused and not cursor and not viewMatches
+end
 function M.install(config,deps)
     if config.party_loading==false then return M end
     local screen,text,worldId,last,engaged=nil,nil,"",nil,false
@@ -52,6 +57,71 @@ function M.install(config,deps)
             deps.log("Native party loading screen displayed: "..message)
         elseif not screen:IsInViewport() then screen:AddToViewport(9999) end
         if valid(text) and last~=message then text:SetText(FText(L.t(message)));last=message end
+    end
+    local cameraState={}
+    local function recoverCamera()
+        local state=deps.state()
+        if state.role~="host" and state.role~="guest" then cameraState={};return end
+        if state.session_stage~="run" or state.status=="connecting_game" then cameraState={};return end
+        local w=deps.current_world()
+        if not valid(w)or not name(w):find("/Game/Arenas/Arena_",1,true)then return end
+        local st=H.GetGameplayStatics()
+        local sys=H.GetKismetSystemLibrary()
+        if sys:IsStandalone(w)then return end
+        local c=st:GetPlayerController(w,0)
+        local p=valid(c)and c.Pawn
+        if not valid(p)or not p:IsA("/Script/RevengeOfTheMage.RM_MageBase")
+            or not p:IsLocallyControlled()or name(p.Controller)~=name(c)then return end
+        local k=name(w)..":"..name(p)
+        if cameraState.key~=k then cameraState={key=k}end
+        local now=st:GetRealTimeSeconds(w)
+        local seq=p.ActiveLevelSequencePlayer
+        local playing=valid(seq)and seq:IsPlaying()
+        -- A sequence can be driven by a level actor instead of the pawn.
+        if not playing then
+            for _,a in ipairs(FindAllOf("LevelSequenceActor")or{})do
+                if valid(a)and name(a:GetWorld())==name(w)then
+                    local player=a.SequencePlayer
+                    if valid(player)and player:IsPlaying()then playing=true;break end
+                end
+            end
+        end
+        local view=c:GetViewTarget()
+        local cam=p.CameraComponent
+        if not valid(cam)then return end
+        local paused=st:IsGamePaused(w)
+        local eligible=not playing and not p.bIsDead and not paused and not c.bShowMouseCursor
+        if not eligible then cameraState.since=nil;cameraState.control=nil;return end
+        cameraState.since=cameraState.since or now
+        if now-cameraState.since<1 then return end
+        if M.cameraRecovery(true,p.bIsDead,playing,paused,c.bShowMouseCursor,name(view)==name(p)) then
+            c:SetViewTargetWithBlend(p,0,0,0,false)
+            cam:Activate(false)
+            deps.log("Party camera: restored local pawn view after sequence")
+            cameraState.since=now
+            return
+        end
+        -- The game normally drives camera rotation itself. Only enable
+        -- controller rotation when measured view/camera rotation is stuck
+        -- while the user's control rotation actually changes.
+        local r=c:GetControlRotation()
+        local cr=cam:K2_GetComponentRotation()
+        local function distance(a,b)return math.abs((a-b+180)%360-180)end
+        if cameraState.control and cameraState.cam and not cameraState.fixed then
+            local input=distance(r.Yaw,cameraState.control.Yaw)+distance(r.Pitch,cameraState.control.Pitch)
+            local motion=distance(cr.Yaw,cameraState.cam.Yaw)+distance(cr.Pitch,cameraState.cam.Pitch)
+            if input>12 and motion<2 and distance(r.Yaw,cr.Yaw)+distance(r.Pitch,cr.Pitch)>12 then
+                cameraState.stuck=(cameraState.stuck or 0)+1
+                if cameraState.stuck>=2 then
+                    cam.bUsePawnControlRotation=true
+                    cam:K2_SetWorldRotation(r,false,{},true)
+                    cameraState.fixed=true
+                    deps.log("Party camera: restored frozen local camera rotation")
+                end
+            else cameraState.stuck=0 end
+        end
+        cameraState.control={Yaw=r.Yaw,Pitch=r.Pitch}
+        cameraState.cam={Yaw=cr.Yaw,Pitch=cr.Pitch}
     end
     local pending=false
     local errors={}
@@ -102,6 +172,10 @@ function M.install(config,deps)
             if not ok and not errors[tostring(e)] then errors[tostring(e)]=true;deps.log("Party loading: "..tostring(e)) end
         end) end
         return false
+    end)
+    deps.every(250,function()
+        local ok,e=pcall(recoverCamera)
+        if not ok and not errors[tostring(e)]then errors[tostring(e)]=true;deps.log("Party camera: "..tostring(e))end
     end)
     return M
 end

@@ -9,6 +9,7 @@ local pc_class = "/Script/RevengeOfTheMage.RM_PlayerController"
 local function object(identity, kind, world, pawn)
     local result = { identity = identity, kind = kind, world = world, Pawn = pawn }
     function result:IsValid() return true end
+    function result:GetLocalRole() return self.role or 3 end
     function result:GetFullName() return self.identity end
     function result:GetWorld() return self.world end
     function result:IsA(class_name) return self.kind == class_name end
@@ -63,4 +64,8 @@ controllers = { guest }
 run(non_mage)
 assert(non_mage.Controller == nil, "Non-mage must be untouched")
 
+local replica=object("simulated guest mage",mage_class,a)
+replica.role=1
+run(replica)
+assert(not replica.Controller,"Simulated proxy must not claim a local controller")
 print("Early controller unit tests passed")

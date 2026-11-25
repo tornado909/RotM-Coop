@@ -183,6 +183,16 @@ internal static class NativeGuards
                 Hex("49BB"), Address(image + 0x4930120), Hex("41FFD3"),
                 IndirectJump(site + original.Length)));
     }
+    // A remote mage must not start a local sequence/camera cut on the host.
+    // RM_MageBase::PlayLevelSequencePlayer uses PC at +0x790; the verified
+    // RM_PlayerController local-controller flag is bit 0 at +0x6c4.
+    private static void EnsureLocalSequenceGuard(nint h, long image)
+    {
+        byte[] original = Hex("488BC4554157488D68A14881ECA8000000");
+        EnsurePartyPatch(h, image + 0x50FF3E0, original, site =>
+            Combine(Hex("488B81900700004885C07409F680C4060000017501C3"),
+                original, IndirectJump(site + original.Length)));
+    }
     internal static PartyHandle InstallParty(int pid, string exe)
     {
         VerifyGame(exe);
@@ -196,6 +206,7 @@ internal static class NativeGuards
         {
             EnsureDetectionGuard(h, image);
             EnsureNiagaraSpawnGuard(h, image);
+            EnsureLocalSequenceGuard(h, image);
             byte[] ui = Hex("48895C24104889742420574883EC40");
             EnsurePartyPatch(h, image + 0x5136D00, ui, site =>
                 Combine(Hex("F681C4060000017501C3"), ui, IndirectJump(site + ui.Length)));

@@ -46,6 +46,16 @@ local function identity(ch)
     local i,f,l=ch.RotMEnemyChIndex,ch.RotMEnemyOpenFirst,ch.RotMEnemyOpenLast
     if integer(i,65535)and integer(f,2147483647)and integer(l,2147483647)and l>=f then return key(i,f,l)end
 end
+-- BP_DummySpawner spawns one additional authority-role mummy on a guest
+-- even though the actual host dummy is also replicated to that guest.
+-- Only suppress the proven hub class; never suppress arena enemies by proximity.
+function M.localDummy(world,className,role)
+    return world:find("/Game/Arenas/MageHub_New/",1,true)~=nil
+        and className:match("([^%. ]+)$")=="BP_M01_BasicMelee1_C" and role==3
+end
+function M.shouldSendBatch(old,body,now)
+    return not old or old.body~=body or now-old.at>=1
+end
 local function register()
     -- Verified against this game's UE 5.5 Channel layout and a native LAN trace.
     for _,p in ipairs({{"RotMEnemyChIndex",0x34},{"RotMEnemyOpenFirst",0x38},{"RotMEnemyOpenLast",0x3c}})do
@@ -58,15 +68,32 @@ function M.install(config,deps)
     local ok,err=pcall(register)
     if not ok then deps.log("Enemy sync registration failed: "..tostring(err));return end
     local session,seq,known,lastSent,errors=nil,0,{},-1,{}
+    local sentBatches,suppressed={},{}
     local function tick()
         local w,epoch,host,s=Combat.session(deps)
-        if s~=session then session,seq,known,lastSent=s,0,{},-1 end
+        if s~=session then session,seq,known,lastSent=s,0,{},-1;sentBatches,suppressed={},{} end
         if not w then return end
         local stat=H.GetGameplayStatics()
         local now=stat:GetRealTimeSeconds(w)
         local pc=stat:GetPlayerController(w,0)
         local pid=valid(pc)and valid(pc.PlayerState)and pc.PlayerState.PlayerId
         if not pid then return end
+        if not host and name(w):find("/Game/Arenas/MageHub_New/",1,true)then
+            for _,a in ipairs(FindAllOf("BP_M01_BasicMelee1_C")or{})do
+                if enemy(a,w) and M.localDummy(name(w),name(a:GetClass()),a:GetLocalRole())then
+                    local k=name(a)
+                    if not suppressed[k] or a:GetActorEnableCollision() or not a.bHidden then
+                        a:SetActorHiddenInGame(true)
+                        a:SetActorEnableCollision(false)
+                        pcall(function() a.bCanBeDamaged=false end)
+                        if not suppressed[k]then deps.log("Party enemy: disabled local duplicate dummy "..k)end
+                        suppressed[k]=true
+                    end
+                    local detector=valid(pc.Pawn)and pc.Pawn.EnemyDetectionComponent
+                    if valid(detector)and name(detector.CurrentTarget)==name(a)then detector:NullifyCurrentTarget()end
+                end
+            end
+        end
         -- Cache the identity while the channel exists: enemy death tears it off.
         local openPaths={}
         for _,ch in ipairs(FindAllOf("ActorChannel")or{})do
@@ -103,6 +130,11 @@ function M.install(config,deps)
             local reused=openPaths[v.pid..":"..v.path] and openPaths[v.pid..":"..v.path]~=id
             -- A dormant actor may outlive its channel. Keep the mapping until the actor disappears or is reused.
             local stale=host and v.terminalAt and now-v.terminalAt>30
+            if host and v.terminal and not reused and openPaths[v.pid..":"..v.path]==id
+                and enemy(a,w) and a.bIsDead==false then
+                v.terminal,v.terminalAt=nil,nil
+                stale=false
+            end
             if stale then
                 known[id]=nil
             elseif host and v.terminal then
@@ -123,15 +155,15 @@ function M.install(config,deps)
                     end
                 elseif t and not host then
                     local r=incoming[v.key]
-                    if r and r.class==v.class and r.seq>v.received and not v.dead then
+                    if r and r.class==v.class and r.seq>v.received then
                         t.MaxHealth.CurrentValue=r.max;t.MaxHealth.BaseValue=r.max
                         t.HealthPower.CurrentValue=r.hp;t.HealthPower.BaseValue=r.hp
-                        if r.dead then
-                            if not a.bIsDead then
-                                a.bIsDead=true
-                                a:Die_BP()
-                            end
+                        if r.dead and not v.dead then
+                            -- The server owns death, loot and respawn. Die_BP can spawn
+                            -- a second local death actor; do not execute that gameplay path.
+                            a.bIsDead=true
                             a:SetActorEnableCollision(false)
+                            a:SetActorHiddenInGame(true)
                             v.dead=true
                             -- A local target must not keep a corpse locked after
                             -- the authoritative actor channel has torn off.
@@ -139,6 +171,11 @@ function M.install(config,deps)
                             if valid(detector) and name(detector.CurrentTarget)==name(a) then
                                 detector:NullifyCurrentTarget()
                             end
+                        elseif not r.dead and v.dead then
+                            a.bIsDead=false
+                            a:SetActorHiddenInGame(false)
+                            a:SetActorEnableCollision(true)
+                            v.dead=false
                         end
                         v.received=r.seq
                     end
@@ -152,8 +189,13 @@ function M.install(config,deps)
                 local batch,body,count=0,"",0
                 local function flush()
                     if count==0 or batch>255 then return end
-                    seq=seq+1
-                    deps.send(string.format("party_combat|N|%d|%d|%d|%d|%s",epoch,seq,recipient,batch,body))
+                    local k=recipient..":"..batch
+                    if M.shouldSendBatch(sentBatches[k],body,now)then
+                        seq=seq+1
+                        if deps.send(string.format("party_combat|N|%d|%d|%d|%d|%s",epoch,seq,recipient,batch,body))then
+                            sentBatches[k]={body=body,at=now}
+                        end
+                    end
                     batch,body,count=batch+1,"",0
                 end
                 for _,row in ipairs(rows)do
